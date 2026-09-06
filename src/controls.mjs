@@ -50,3 +50,25 @@ export function parsePreset(text){
  if(s.includes('高层'))throw new Error('“高层”未设分类阈值，请明确输入“高度超过50米的建筑”等数值条件。');
  throw new Error('本地预设模式未匹配此指令。可尝试“按建筑高度着色”“仅显示高度超过50米的建筑”“显示人口网格”。');
 }
+
+export function featureId(feature,field='stable_id') {return String(feature.properties[field]);}
+export function selectByAttribute(features,{field,operator,value},idField='stable_id') {
+ const operations=['eq','ne','gt','gte','lt','lte','contains','empty','notempty'];
+ if(!operations.includes(operator)||!features.some(f=>Object.hasOwn(f.properties,field)))throw new Error('请选择有效字段和比较方式');
+ const numeric=['gt','gte','lt','lte'].includes(operator);
+ if(numeric&&(String(value).trim()===''||!Number.isFinite(Number(value))))throw new Error('数值比较需要输入有效数字');
+ return features.filter(({properties:p})=>{
+  const x=p[field],empty=x==null||x==='';
+  if(operator==='empty')return empty;
+  if(operator==='notempty')return !empty;
+  if(empty)return false;
+  if(numeric){if(typeof x!=='number'||!Number.isFinite(x))return false;return {gt:x>Number(value),gte:x>=Number(value),lt:x<Number(value),lte:x<=Number(value)}[operator];}
+  if(operator==='contains')return String(x).toLocaleLowerCase().includes(String(value).toLocaleLowerCase());
+  const equal=typeof x==='number'?String(value).trim()!==''&&x===Number(value):String(x)===String(value);
+  return operator==='eq'?equal:!equal;
+ }).map(f=>featureId(f,idField));
+}
+export function updateTransparency(settings,{layer,value,scope='layer'},allowedLayers) {
+ if(!allowedLayers.includes(layer)||!['layer','selected'].includes(scope)||typeof value!=='number'||!Number.isFinite(value)||value<0||value>100)throw new Error('透明度必须为0–100之间的数字');
+ return {...settings,[layer]:{...settings[layer],[scope==='selected'?'selectedTransparency':'transparency']:value}};
+}

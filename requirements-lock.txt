@@ -11,6 +11,8 @@ fastapi==0.141.1
 fonttools==4.64.0
 geopandas==1.1.4
 h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
 idna==3.19
 kiwisolver==1.5.1
 matplotlib==3.11.1
@@ -24,6 +26,7 @@ pyogrio==0.13.0
 pyparsing==3.3.2
 pyproj==3.8.0
 python-dateutil==2.9.0.post0
+python-multipart==0.0.32
 rasterio==1.5.1
 shapely==2.1.2
 six==1.17.0
