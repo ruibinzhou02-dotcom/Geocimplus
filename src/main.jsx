@@ -18,7 +18,7 @@ function App(){
  const filtered=useMemo(()=>dataset?selectBuildings(dataset.buildings.features,state):[],[dataset,state]);
  const summary=useMemo(()=>summarize(filtered),[filtered]);
  useEffect(()=>{Promise.all([get('/api/catalog'),...Object.keys(names).map(k=>get('/api/layers/'+k))]).then(([c,...layers])=>{setCatalog(c);setDataset(Object.fromEntries(Object.keys(names).map((k,i)=>[k,layers[i]])));if(!c.height_enabled)setState(s=>({...s,threeD:false,color:'uniform'}));}).catch(e=>setError(e.message));},[]);
- const fit=(m,threeD=true)=>{m.fitBounds(catalog.bounds,{padding:{top:90,bottom:85,left:90,right:65},duration:0,pitch:threeD?52:0,bearing:threeD?-22:0});};
+ const fit=(m,threeD=true)=>{m.fitBounds(catalog.bounds,{padding:{top:90,bottom:85,left:90,right:65},duration:0,pitch:threeD?52:0,bearing:threeD?-22:0});if(threeD)m.jumpTo({zoom:m.getZoom()+0.35});};
  useEffect(()=>{
   if(!dataset||!catalog||map.current)return;
   const m=new maplibregl.Map({container:mapContainer.current,style:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#F4F5F3'}}]},center:[(catalog.bounds[0][0]+catalog.bounds[1][0])/2,(catalog.bounds[0][1]+catalog.bounds[1][1])/2],zoom:15,pitch:52,bearing:-22,maxPitch:75,attributionControl:false,canvasContextAttributes:{preserveDrawingBuffer:true}});map.current=m;
