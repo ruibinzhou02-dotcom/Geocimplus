@@ -17,6 +17,6 @@ for path in ['/api/ai/chat','/api/uploads']:
   if e.code not in (403,405):raise
   results.append({'path':path,'method':'POST','status':e.code})
  else:raise RuntimeError('Public POST unexpectedly enabled')
-output=root/'reports/resume_20260906_164140/public_verification.json'
+output=release/'public_verification.json'
 output.write_text(json.dumps({'checked_at':datetime.now().isoformat(),'release':str(release),'results':results},indent=2),encoding='utf8')
 print(json.dumps({'passed':len(results),'report':str(output)}))

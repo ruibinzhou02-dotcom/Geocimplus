@@ -1,5 +1,6 @@
+import {analysisEnglish} from './analysis-i18n.mjs';
 import React,{createContext,useContext,useEffect,useMemo,useState} from 'react';
-const en={
+const en={...analysisEnglish,
  '演示指令':'Demo commands','公开演示使用本地预设指令，尚未接入模型。':'This public demo uses local preset commands. No AI model is connected.',
  '导出 PNG':'Export PNG','正在导出…':'Exporting…','本地真实数据':'Local real data','公开演示':'Public demo','基础图层：模拟数据':'Base layers: synthetic data',
  '请选择一个不超过 32 MiB 的 GeoJSON 文件。':'Choose one GeoJSON file up to 32 MiB.',
@@ -20,6 +21,7 @@ const en={
 export function translate(text,lang='zh'){
  if(lang!=='en'||typeof text!=='string')return text;
  if(Object.hasOwn(en,text))return en[text];
+ if(/^第 \d+ 个要素几何无效/.test(text))return `Feature ${text.match(/\d+/)[0]} has invalid geometry. Repair it first.`;
  if(text.endsWith('（灰度）'))return translate(text.slice(0,-4),lang)+' (grayscale)';
  if(/^已选择 [\d,]+ 栋建筑/.test(text))return `Selected ${text.match(/[\d,]+/)[0]} buildings. Adjust selected feature transparency in the attribute table.`;
  if(/^建筑图层透明度已设为 /.test(text))return `Building transparency set to ${text.match(/\d+/)[0]}%.`;

@@ -21,7 +21,7 @@ export default function MapView({catalog,dataset,metadata,rasters,settings,selec
   const fill=key==='buildings'?heightColor:key==='population'?['step',['coalesce',['get','usum'],0],'#EDF0D8',300,'#D3DEAC',700,'#A8C65B',1500,'#718F35',3000,'#3F5E24']:key==='boundary'?'#CFD4CF':'#5AA8A0';
   const add=(suffix,type,geometry,paint)=>{for(const selected of [false,true]){const id=`${key}-${suffix}${selected?'-chosen':''}`;m.addLayer({id,type,source:key,filter:['==',['geometry-type'],geometry],paint});groups.current.push({id,type,geometry,selected,key});}};
   add('fill','fill','Polygon',{'fill-color':fill});
-  if(key==='buildings')add('volume','fill-extrusion','Polygon',{'fill-extrusion-color':fill,'fill-extrusion-height':['coalesce',['get','height'],0],'fill-extrusion-base':0});
+  add('volume','fill-extrusion','Polygon',{'fill-extrusion-color':fill,'fill-extrusion-height':['coalesce',['get','height'],0],'fill-extrusion-base':0});
   add('line','line','LineString',{'line-color':key==='roads'?'#778086':'#378D84','line-width':key==='roads'?2.5:2});
   add('edge','line','Polygon',{'line-color':key==='boundary'?'#809B71':'#708987','line-width':key==='boundary'?1.6:.7});
   add('point','circle','Point',{'circle-color':'#7659C8','circle-radius':5,'circle-stroke-width':1,'circle-stroke-color':'#FFFFFF'});
@@ -37,15 +37,20 @@ export default function MapView({catalog,dataset,metadata,rasters,settings,selec
  },[catalog]);
  useEffect(()=>{
   const m=map.current;if(!m||!ready.current)return;
+  for(const key of [...new Set(groups.current.map(g=>g.key))])if(!dataset[key]){for(const g of groups.current.filter(g=>g.key===key))if(m.getLayer(g.id))m.removeLayer(g.id);if(m.getSource(key))m.removeSource(key);groups.current=groups.current.filter(g=>g.key!==key);}
+  for(const layer of m.getStyle().layers.filter(l=>l.type==='raster'))if(!rasters.some(r=>r.id===layer.source)){m.removeLayer(layer.id);m.removeSource(layer.source);}
   for(const r of rasters)if(!m.getSource(r.id)){m.addSource(r.id,{type:'image',url:r.url,coordinates:r.coordinates});m.addLayer({id:r.id+'-raster',type:'raster',source:r.id,paint:{'raster-fade-duration':0}},'raster-anchor');}
   for(const key of [...['boundary','population','roads','buildings'],...Object.keys(dataset).filter(k=>!['boundary','population','roads','buildings'].includes(k))])if(dataset[key]&&!m.getSource(key))addVector(m,key,dataset[key]);
   for(const r of rasters){m.setLayoutProperty(r.id+'-raster','visibility',settings[r.id]?.visible?'visible':'none');m.setPaintProperty(r.id+'-raster','raster-opacity',1-(settings[r.id]?.transparency??0)/100);}
   for(const g of groups.current){
    const ids=selection.layer===g.key?selection.ids:[],idField=metadata[g.key]?.idField||'stable_id',match=['in',['to-string',['get',idField]],['literal',ids]];
    m.setFilter(g.id,['all',['==',['geometry-type'],g.geometry],g.selected?match:['!',match]]);
-   const show=settings[g.key]?.visible!==false&&(g.key!=='buildings'||(g.type==='fill-extrusion'?threeD:g.type==='fill'||g.geometry==='Polygon'?!threeD:true));
+   const heightField=metadata[g.key]?.heightField||'',volume=!!heightField&&threeD;
+   if(g.type==='fill-extrusion')m.setPaintProperty(g.id,'fill-extrusion-height',['max',0,['to-number',['get',heightField||'__no_height'],0]]);
+   const show=!!dataset[g.key]&&settings[g.key]?.visible!==false&&(g.type==='fill-extrusion'?volume:g.geometry==='Polygon'?!volume:true);
    m.setLayoutProperty(g.id,'visibility',show?'visible':'none');
    const opacity=1-(settings[g.key]?.[g.selected?'selectedTransparency':'transparency']??(g.selected?15:30))/100;m.setPaintProperty(g.id,g.type+'-opacity',opacity);if(g.type==='circle')m.setPaintProperty(g.id,'circle-stroke-opacity',opacity);
+   if(!g.selected&&metadata[g.key]?.density&&g.type==='fill'){const {field,max}=metadata[g.key].density;m.setPaintProperty(g.id,'fill-color',['interpolate',['linear'],['get',field],0,'#f1edf9',Math.max(max,1e-12)*.4,'#ac87d2',Math.max(max,1e-12),'#562690']);}
    if(g.selected)m.setPaintProperty(g.id,g.type+'-color','#D8BA59');else if(g.key==='buildings'&&['fill','fill-extrusion'].includes(g.type))m.setPaintProperty(g.id,g.type+'-color',color==='height'?heightColor:'#7659C8');
   }
  },[dataset,metadata,rasters,settings,selection,threeD,color,camera]);
