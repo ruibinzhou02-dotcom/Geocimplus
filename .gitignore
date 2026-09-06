@@ -1,0 +1,15 @@
+geocim-dev/
+reports/
+data/
+config/data_catalog.json
+config/local*.json
+node_modules/
+dist/
+target/
+*.log
+.env*
+__pycache__/
+*.pyc
+src-tauri/bin/
+*.spec
+scripts/probe.py
