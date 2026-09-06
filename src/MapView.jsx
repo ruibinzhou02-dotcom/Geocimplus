@@ -1,3 +1,4 @@
+import {useI18n} from './i18n.jsx';
 import React,{useEffect,useRef} from 'react';
 import maplibregl from 'maplibre-gl';
 import {featureId} from './controls.mjs';
@@ -10,6 +11,7 @@ export function geometryBounds(features){
  const b=[[Infinity,Infinity],[-Infinity,-Infinity]];for(const p of points){b[0][0]=Math.min(b[0][0],p[0]);b[0][1]=Math.min(b[0][1],p[1]);b[1][0]=Math.max(b[1][0],p[0]);b[1][1]=Math.max(b[1][1],p[1]);}return b;
 }
 export default function MapView({catalog,dataset,metadata,rasters,settings,selection,threeD,color,camera,tableOpen,onPick,onReady,onError}){
+ const {t,lang}=useI18n();
  const container=useRef(null),map=useRef(null),groups=useRef([]),ready=useRef(false),dataRef=useRef(dataset),metaRef=useRef(metadata),callbacks=useRef({onPick,onReady,onError});
  dataRef.current=dataset;metaRef.current=metadata;callbacks.current={onPick,onReady,onError};
  const fit=(m,bounds,duration=0)=>m.fitBounds(bounds,{padding:{top:tableOpen?45:100,bottom:tableOpen?35:70,left:55,right:55},duration,maxZoom:18,pitch:threeD?52:0,bearing:threeD?-22:0});
@@ -49,5 +51,10 @@ export default function MapView({catalog,dataset,metadata,rasters,settings,selec
  useEffect(()=>{if(ready.current)map.current.easeTo({pitch:threeD?52:0,duration:350});},[threeD]);
  useEffect(()=>{if(ready.current)fit(map.current,camera?.bounds||catalog.bounds,camera?.bounds?500:0);},[camera]);
  useEffect(()=>{if(ready.current){map.current.resize();fit(map.current,camera?.bounds||catalog.bounds);}},[tableOpen]);
- return <div ref={container} className="map" aria-label="交互地图"/>;
+ useEffect(()=>{
+  for(const [selector,zh,en] of [['.maplibregl-ctrl-zoom-in','放大','Zoom in'],['.maplibregl-ctrl-zoom-out','缩小','Zoom out'],['.maplibregl-ctrl-compass','拖动旋转，点击朝北','Drag to rotate, click to face north']]){
+   const button=container.current?.querySelector(selector);if(button){const label=lang==='en'?en:zh;button.setAttribute('title',label);button.setAttribute('aria-label',label);}
+  }
+ },[lang,catalog]);
+ return <div ref={container} className="map" aria-label={t("交互地图")}/>;
 }

@@ -4,8 +4,12 @@ from pathlib import Path
 from fastapi import FastAPI,HTTPException,Request,UploadFile,File,Form
 from starlette.concurrency import run_in_threadpool
 try:
+    from .messages import english_upload_error
+    from .ai import AIService,ChatRequest
     from .uploads import MAX_UPLOAD, EXTENSIONS, safe_relative, unpack, process_upload, load_uploads
 except ImportError:
+    from messages import english_upload_error
+    from ai import AIService,ChatRequest
     from uploads import MAX_UPLOAD, EXTENSIONS, safe_relative, unpack, process_upload, load_uploads
 from fastapi.responses import FileResponse,JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,8 +27,25 @@ def create_app(project,frontend=None):
     boundary_points=[p for f in layers['boundary']['features'] for p in coordinates(f['geometry']['coordinates'])]
     bounds=[[min(p[0] for p in boundary_points),min(p[1] for p in boundary_points)],[max(p[0] for p in boundary_points),max(p[1] for p in boundary_points)]]
     app=FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
+    @app.exception_handler(HTTPException)
+    async def localized_error(request,exc):
+        detail=english_upload_error(exc.detail) if request.url.path=='/api/uploads' and request.headers.get('accept-language','').startswith('en') else exc.detail
+        return JSONResponse({'detail':detail},status_code=exc.status_code,headers=exc.headers)
     app.add_middleware(TrustedHostMiddleware,allowed_hosts=['127.0.0.1','localhost','testserver'])
     upload_root=project/'data'/'uploads';upload_root.mkdir(parents=True,exist_ok=True)
+    def ai_context():
+        summary=[{'id':k,'kind':'vector','name':k,'count':len(v['features']),'fields':list(v['features'][0]['properties']) if v['features'] else []} for k,v in layers.items()]
+        summary.append({'id':'satellite','kind':'raster','name':'Satellite basemap','fields':[]})
+        for m in load_uploads(upload_root):summary.append({'id':m['id'],'kind':m['kind'],'name':m['name'],'count':m.get('count'),'fields':[x['name'] for x in m.get('fields',[])]})
+        heights=[f['properties']['height'] for f in layers['buildings']['features'] if isinstance(f['properties'].get('height'),(int,float)) and f['properties']['height']>=0]
+        return {'layers':summary,'building_statistics':{'count':len(layers['buildings']['features']),'mean_height_m':sum(heights)/len(heights) if heights else None,'max_height_m':max(heights) if heights else None},'units':{'height':'metres above ground','usum':'people'},'population_time':'20190428 / 0910'}
+    ai=AIService(project,ai_context);app.state.ai=ai
+    @app.get('/api/ai/status')
+    def ai_status():return ai.status()
+    @app.post('/api/ai/chat')
+    async def ai_chat(body:ChatRequest):return await ai.run(body)
+    @app.post('/api/ai/test')
+    async def ai_test():return await ai.run(ChatRequest(message='Test connection',language='en'),test=True)
     @app.middleware('http')
     async def secure(request,call_next):
         if request.method=='POST':
@@ -32,6 +53,8 @@ def create_app(project,frontend=None):
             if origin and origin not in {'http://127.0.0.1:8765','http://localhost:8765','http://127.0.0.1:5173','http://localhost:5173'}:
                 return JSONResponse({'detail':'只接受本地页面上传。'},status_code=403)
             size=request.headers.get('content-length')
+            if request.url.path.startswith('/api/ai/') and size and size.isdigit() and int(size)>65536:
+                return JSONResponse({'detail':'AI request too large.'},status_code=413)
             if not size or not size.isdigit() or int(size)>MAX_UPLOAD+1024**2:
                 return JSONResponse({'detail':'单次上传最大256 MiB。'},status_code=413)
         response=await call_next(request);response.headers['X-Content-Type-Options']='nosniff';response.headers['Cache-Control']='no-store';return response

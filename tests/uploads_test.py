@@ -38,6 +38,9 @@ class UploadTests(unittest.TestCase):
   r=self.post_shape('point');self.assertEqual(r.status_code,200,r.text)
  def test_missing_sidecar_rejected(self):
   r=self.post_shape('测试面','.prj');self.assertEqual(r.status_code,400);self.assertIn('.prj',r.json()['detail'])
+  files=[('files',(p.name,p.read_bytes())) for p in self.fixtures.glob('测试面.*') if p.suffix!='.prj']
+  r=self.client.post('/api/uploads',files=files,data={'kind':'vector'},headers={'Accept-Language':'en'})
+  self.assertEqual(r.status_code,400);self.assertTrue(r.json()['detail'].startswith('Missing Shapefile companions:'))
  def test_nested_zip(self):
   buf=io.BytesIO()
   with zipfile.ZipFile(buf,'w') as z:
