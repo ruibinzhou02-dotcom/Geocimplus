@@ -16,6 +16,7 @@
     "@turf/buffer": "^7.4.0",
     "@turf/centroid": "^7.4.0",
     "@turf/length": "^7.4.0",
+    "@xyflow/react": "^12.11.6",
     "fflate": "^0.8.3",
     "geotiff": "^3.0.5",
     "lucide-react": "^0.468.0",

@@ -1,0 +1,9 @@
+[
+  {
+    "operation": "centroid"
+  },
+  {
+    "operation": "buffer",
+    "distance": 50
+  }
+]

@@ -27,13 +27,15 @@ export default function MapView({catalog,dataset,metadata,rasters,settings,selec
   add('point','circle','Point',{'circle-color':'#7659C8','circle-radius':5,'circle-stroke-width':1,'circle-stroke-color':'#FFFFFF'});
  };
  useEffect(()=>{
-  const m=new maplibregl.Map({container:container.current,canvasContextAttributes:{preserveDrawingBuffer:true},style:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#F4F5F3'}}]},center:[(catalog.bounds[0][0]+catalog.bounds[1][0])/2,(catalog.bounds[0][1]+catalog.bounds[1][1])/2],zoom:13,pitch:threeD?52:0,bearing:threeD?-22:0,attributionControl:false});map.current=m;
+  const m=new maplibregl.Map({container:container.current,canvasContextAttributes:{preserveDrawingBuffer:true},style:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#F4F5F3'}}]},center:[(catalog.bounds[0][0]+catalog.bounds[1][0])/2,(catalog.bounds[0][1]+catalog.bounds[1][1])/2],zoom:13,pitch:threeD?52:0,bearing:threeD?-22:0,dragRotate:true,pitchWithRotate:true,attributionControl:false});map.current=m;
+  m.dragRotate.enable();
+  const preventMenu=e=>e.preventDefault();container.current.addEventListener('contextmenu',preventMenu);
   m.addControl(new maplibregl.NavigationControl(),'bottom-right');m.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-left');
   m.on('load',()=>{m.addLayer({id:'raster-anchor',type:'background',paint:{'background-opacity':0}});ready.current=true;fit(m,catalog.bounds);onExporter(options=>exportMapPNG(m,options));callbacks.current.onReady(true);});
   m.on('error',e=>callbacks.current.onError(e.error?.message||'地图加载失败'));
   m.on('click',e=>{const layers=groups.current.map(g=>g.id).filter(id=>m.getLayer(id));if(!layers.length)return;const f=m.queryRenderedFeatures(e.point,{layers})[0];if(!f)return;const key=f.source,idField=metaRef.current[key]?.idField||'stable_id';const original=dataRef.current[key]?.features.find(x=>featureId(x,idField)===featureId(f,idField));if(original)callbacks.current.onPick({layer:key,feature:original});});
   const resize=new ResizeObserver(()=>m.resize());resize.observe(container.current);
-  return()=>{ready.current=false;groups.current=[];resize.disconnect();m.remove();};
+  return()=>{ready.current=false;groups.current=[];resize.disconnect();container.current?.removeEventListener('contextmenu',preventMenu);m.remove();};
  },[catalog]);
  useEffect(()=>{
   const m=map.current;if(!m||!ready.current)return;

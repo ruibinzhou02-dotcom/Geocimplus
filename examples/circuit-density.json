@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "cell-0",
+      "type": "source",
+      "params": {
+        "layer": "buildings"
+      },
+      "position": {
+        "x": 60,
+        "y": 160
+      }
+    },
+    {
+      "id": "cell-1",
+      "type": "centroid",
+      "params": {},
+      "position": {
+        "x": 315,
+        "y": 160
+      }
+    },
+    {
+      "id": "cell-2",
+      "type": "kde",
+      "params": {
+        "bandwidth": 200,
+        "cellSize": 100,
+        "weightField": ""
+      },
+      "position": {
+        "x": 570,
+        "y": 160
+      }
+    },
+    {
+      "id": "cell-3",
+      "type": "output",
+      "params": {},
+      "position": {
+        "x": 825,
+        "y": 160
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "wire-0",
+      "source": "cell-0",
+      "target": "cell-1"
+    },
+    {
+      "id": "wire-1",
+      "source": "cell-1",
+      "target": "cell-2"
+    },
+    {
+      "id": "wire-2",
+      "source": "cell-2",
+      "target": "cell-3"
+    }
+  ]
+}
