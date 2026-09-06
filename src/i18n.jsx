@@ -1,5 +1,10 @@
 import React,{createContext,useContext,useEffect,useMemo,useState} from 'react';
 const en={
+ '演示指令':'Demo commands','公开演示使用本地预设指令，尚未接入模型。':'This public demo uses local preset commands. No AI model is connected.',
+ '导出 PNG':'Export PNG','正在导出…':'Exporting…','本地真实数据':'Local real data','公开演示':'Public demo','基础图层：模拟数据':'Base layers: synthetic data',
+ '请选择一个不超过 32 MiB 的 GeoJSON 文件。':'Choose one GeoJSON file up to 32 MiB.',
+ 'GeoJSON 仅保留在当前浏览器页面，刷新后清除。坐标需为 WGS84 经纬度，最大 32 MiB。':'GeoJSON stays in this browser page and is cleared on refresh. WGS84 longitude/latitude required, up to 32 MiB.',
+
  '项目：沙头分析':'Project: Shatou analysis','沙头分析':'Shatou analysis','城市空间探索':'Spatial workspace','本地工作空间':'Local workspace','上传数据':'Upload data','对话':'Chat','图层':'Layers','属性表':'Attributes','上传':'Upload','探索助手':'Assistant','本地预设':'Local commands','本地预设指令':'Local commands','从一个操作开始':'Start with an action','打开属性表':'Open attribute table','选择高度超过50米的建筑':'Select buildings taller than 50 m','建筑透明度70%':'Set building transparency to 70%','显示人口网格':'Show population grid','按建筑高度着色':'Color buildings by height',
  '建筑':'Buildings','路网':'Roads','人口网格':'Population grid','边界':'Boundary','卫星底图':'Satellite basemap','（灰度）':' (grayscale)','灰度':'Grayscale','3D 建筑':'3D buildings','2D 平面':'2D map','重置视角':'Reset view','建筑数量':'Buildings','平均高度':'Mean height','最高建筑':'Tallest building','建筑离地高度':'Building height','米':'m','网格人数':'People per cell','正在加载城市空间…':'Loading project…','关闭要素属性':'Close feature properties','在属性表中选择':'Select in attribute table','关闭提示':'Dismiss message',
  '矢量图层':'Vector layers','定位图层':'Zoom to layer','底图':'Basemaps','浮动面板':'Floating panels','图层属性表':'Layer attributes','当前图层透明度':'Current layer transparency','当前选中要素透明度':'Selected feature transparency','建筑着色':'Building colors','建筑着色方式':'Building color scheme','按离地高度着色':'By building height','统一颜色':'Uniform color','统计卡与图例透明度':'Statistics and legend transparency','图层透明度':'Layer transparency','已选要素透明度':'Selected feature transparency','输入地图指令':'Enter a map command','例如：选择高度超过50米的建筑':'e.g. Select buildings taller than 50 m','发送指令':'Send command',

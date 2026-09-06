@@ -2,6 +2,7 @@ import {useI18n} from './i18n.jsx';
 import React,{useEffect,useRef} from 'react';
 import maplibregl from 'maplibre-gl';
 import {featureId} from './controls.mjs';
+import {exportMapPNG} from './export-map.mjs';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 export const heightColor=['step',['coalesce',['get','height'],0],'#C4B7E5',30,'#9C83D6',60,'#7659C8',100,'#5938B5',200,'#372164'];
@@ -10,7 +11,7 @@ export function geometryBounds(features){
  features.forEach(f=>walk(f.geometry?.coordinates));if(!points.length)return null;
  const b=[[Infinity,Infinity],[-Infinity,-Infinity]];for(const p of points){b[0][0]=Math.min(b[0][0],p[0]);b[0][1]=Math.min(b[0][1],p[1]);b[1][0]=Math.max(b[1][0],p[0]);b[1][1]=Math.max(b[1][1],p[1]);}return b;
 }
-export default function MapView({catalog,dataset,metadata,rasters,settings,selection,threeD,color,camera,tableOpen,onPick,onReady,onError}){
+export default function MapView({catalog,dataset,metadata,rasters,settings,selection,threeD,color,camera,tableOpen,onPick,onReady,onError,onExporter}){
  const {t,lang}=useI18n();
  const container=useRef(null),map=useRef(null),groups=useRef([]),ready=useRef(false),dataRef=useRef(dataset),metaRef=useRef(metadata),callbacks=useRef({onPick,onReady,onError});
  dataRef.current=dataset;metaRef.current=metadata;callbacks.current={onPick,onReady,onError};
@@ -26,9 +27,9 @@ export default function MapView({catalog,dataset,metadata,rasters,settings,selec
   add('point','circle','Point',{'circle-color':'#7659C8','circle-radius':5,'circle-stroke-width':1,'circle-stroke-color':'#FFFFFF'});
  };
  useEffect(()=>{
-  const m=new maplibregl.Map({container:container.current,style:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#F4F5F3'}}]},center:[(catalog.bounds[0][0]+catalog.bounds[1][0])/2,(catalog.bounds[0][1]+catalog.bounds[1][1])/2],zoom:13,pitch:threeD?52:0,bearing:threeD?-22:0,attributionControl:false});map.current=m;
+  const m=new maplibregl.Map({container:container.current,canvasContextAttributes:{preserveDrawingBuffer:true},style:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#F4F5F3'}}]},center:[(catalog.bounds[0][0]+catalog.bounds[1][0])/2,(catalog.bounds[0][1]+catalog.bounds[1][1])/2],zoom:13,pitch:threeD?52:0,bearing:threeD?-22:0,attributionControl:false});map.current=m;
   m.addControl(new maplibregl.NavigationControl(),'bottom-right');m.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-left');
-  m.on('load',()=>{m.addLayer({id:'raster-anchor',type:'background',paint:{'background-opacity':0}});ready.current=true;fit(m,catalog.bounds);callbacks.current.onReady(true);});
+  m.on('load',()=>{m.addLayer({id:'raster-anchor',type:'background',paint:{'background-opacity':0}});ready.current=true;fit(m,catalog.bounds);onExporter(options=>exportMapPNG(m,options));callbacks.current.onReady(true);});
   m.on('error',e=>callbacks.current.onError(e.error?.message||'地图加载失败'));
   m.on('click',e=>{const layers=groups.current.map(g=>g.id).filter(id=>m.getLayer(id));if(!layers.length)return;const f=m.queryRenderedFeatures(e.point,{layers})[0];if(!f)return;const key=f.source,idField=metaRef.current[key]?.idField||'stable_id';const original=dataRef.current[key]?.features.find(x=>featureId(x,idField)===featureId(f,idField));if(original)callbacks.current.onPick({layer:key,feature:original});});
   const resize=new ResizeObserver(()=>m.resize());resize.observe(container.current);

@@ -2,3 +2,6 @@
 @media(max-width:1100px){.map-toolbar{top:93px}.stats-bar{top:151px}.topbar{padding:0 18px}.top-meta{gap:5px}.upload-top{margin-left:6px}.ai-settings-button{margin-left:5px}}
 @media(max-width:760px){.top-meta{font-size:0}.top-meta .local-dot{display:none}.language-switch{margin-left:0}.language-switch button{font-size:11px;padding:5px}.ai-settings-button{font-size:11px;padding:7px}.topbar{padding:0 10px}.brand{gap:7px}.brand b{font-size:19px}.upload-top{font-size:11px;padding:7px}.map-title h1{font-size:20px}}
 .with-table .legend{left:140px}
+
+.demo-badge{color:#7659C8!important;font-weight:600;}
+@media(min-width:761px) and (max-width:1450px){.map-toolbar{top:110px;left:28px;right:auto}.stats-bar{top:178px}}

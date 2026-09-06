@@ -13,3 +13,6 @@ __pycache__/
 src-tauri/bin/
 *.spec
 scripts/probe.py
+tools/
+releases/
+private/
