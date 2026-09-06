@@ -79,7 +79,7 @@ export function runCircuit(input,dataset,metadata,runId='circuit',progress=()=>{
     const count=p=>typeof p[0]==='number'?1:p.reduce((sum,c)=>sum+count(c),0);
     coordinates+=result.data.features.reduce((sum,f)=>sum+count(f.geometry.coordinates),0);if(coordinates>1500000)fail('流程累计结果过大，请拆分流程。');
    }
-   results.set(n.id,result);log.push({id:n.id,type:n.type,count:result.data?.features.length??result.values?.count,status:'done'});progress(Math.round(results.size/graph.nodes.length*100));
+   results.set(n.id,result);log.push({id:n.id,type:n.type,count:result.data?.features.length??result.values?.count,status:'done'});progress(Math.round(results.size/graph.nodes.length*100),{log:[...log]});
   }catch(e){throw new Error(`${n.id}: ${e.message}`);}
  }
  return {outputs:outputs.map(r=>r.kind==='vector'&&!r.bounds?{...prepareGeoJSON(r.data,r.name,r.id),analysis:r.analysis}:r),log,graph};

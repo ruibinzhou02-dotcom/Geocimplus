@@ -36,9 +36,9 @@ export function translate(text,lang='zh'){
  if(text.startsWith('数据加载失败：'))return text.replace('数据加载失败：','Data load failed: ');
  return text;
 }
-const I18n=createContext({lang:'zh',t:s=>s,setLang:()=>{}});
+const I18n=createContext({lang:'en',t:s=>s,setLang:()=>{}});
 export function LanguageProvider({children}){
- const [lang,setLang]=useState(()=>{try{return localStorage.getItem('geocim.language')==='en'?'en':'zh';}catch{return 'zh';}});
+ const [lang,setLang]=useState(()=>{try{return localStorage.getItem('geocim.language')==='zh'?'zh':'en';}catch{return 'en';}});
  useEffect(()=>{document.documentElement.lang=lang==='en'?'en':'zh-CN';document.title=lang==='en'?'GeoCIM · Shatou analysis':'GeoCIM · 沙头分析';try{localStorage.setItem('geocim.language',lang);}catch{}},[lang]);
  const value=useMemo(()=>({lang,setLang,t:s=>translate(s,lang)}),[lang]);return <I18n.Provider value={value}>{children}</I18n.Provider>;
 }

@@ -5,7 +5,8 @@ import {parseChat} from '../src/chat-commands.mjs';
 const dataset={buildings:{type:'FeatureCollection',features:[20,60,100].map((height,i)=>({type:'Feature',properties:{height,stable_id:'b'+i},geometry:{type:'Point',coordinates:[114+i*.001,22.5]}}))}};
 test('connected selection-buffer circuit executes real data and preserves source',()=>{
  const graph=demoGraph('buildings','buffer'),before=JSON.stringify(dataset);
- const r=runCircuit(graph,dataset,{});
+ const updates=[];const r=runCircuit(graph,dataset,{},'test',(percent,detail)=>updates.push({percent,log:detail.log}));
+ assert.deepEqual(updates.map(u=>u.log.length),[1,2,3,4,5]);assert.equal(updates.at(-1).percent,100);
  assert.equal(r.outputs[0].data.features.length,2);assert.equal(r.log.length,5);assert.equal(r.outputs[0].data.features[0].geometry.type,'Polygon');assert.equal(JSON.stringify(dataset),before);
 });
 test('circuit rejects cyclic edges, duplicate wires and incompatible summary connections',()=>{

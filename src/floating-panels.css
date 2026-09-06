@@ -1,0 +1,24 @@
+.circuit-overlay.circuit-window{inset:auto;min-height:240px;border-radius:10px;box-shadow:0 -4px 24px #392b511b;z-index:20}
+.circuit-overlay.circuit-window.docked{left:0;right:0;bottom:0;width:100%;border-radius:9px 9px 0 0}
+.circuit-overlay.circuit-window.floating{right:auto;bottom:auto;max-width:calc(100vw - 16px)}
+.circuit-window .circuit-header{height:42px;min-height:42px;padding:0 15px;cursor:move;touch-action:none;user-select:none}
+.circuit-window .circuit-header b{font-size:16px}.circuit-window .circuit-header span{font-size:11px}
+.circuit-window .window-actions{gap:8px}.circuit-window .window-actions button{font-size:11px;padding:5px 8px;cursor:pointer}
+.circuit-window .circuit-toolbar{padding:7px 12px;gap:6px}.circuit-window .circuit-toolbar button,.circuit-window .circuit-toolbar select{padding:6px 9px;font-size:11px}
+.circuit-window .battery-library,.circuit-window .battery-inspector{padding-top:2px}.circuit-window .battery-library>button{padding:6px 8px;margin:4px 0}
+.circuit-window .circuit-footer{padding:5px 14px;font-size:10px}.circuit-window .react-flow__minimap{width:100px;height:65px}
+.circuit-window .circuit-hint{top:5px;font-size:10px}.circuit-window .circuit-body{min-height:70px}
+.panel-resize{height:10px;flex-shrink:0;cursor:ns-resize;touch-action:none;display:flex;align-items:center;justify-content:center;background:#f5f2f9;user-select:none;z-index:5;border-bottom:1px solid #e5deee}
+.panel-resize span{width:48px;height:3px;border-radius:3px;background:#c4b3da}.panel-resize:hover,.panel-resize:focus-visible{background:#e8dff3;outline:none}.panel-resize:hover span{background:#9c7ec1}
+.window-corner{position:absolute;right:0;bottom:0;width:17px;height:17px;cursor:nwse-resize;touch-action:none;background:linear-gradient(135deg,transparent 60%,#bfaad5 61%,transparent 68%,transparent 78%,#bfaad5 79%,transparent 86%)}
+.map-area.with-table .map{bottom:var(--table-height,350px)}
+.map-area .attribute-table{height:var(--table-height,350px)}
+.map-area.with-table .legend{bottom:calc(var(--table-height,350px) + 20px)}
+.map-area.with-table .rotation-hint{bottom:calc(var(--table-height,350px) + 7px)}
+.map-area.with-table .property-card{max-height:calc(100% - var(--table-height,350px) - 120px)}
+.attribute-table.compact-table .attribute-query,.attribute-table.compact-table .attribute-style{display:none}
+.attribute-table.compact-table>header{padding:6px 12px}.attribute-table.compact-table>footer{padding:3px 12px}
+.map-area.short-map .legend,.map-area.short-map .stats-bar{display:none}
+.map-area.short-map .map-title{top:10px;padding:6px 10px}.map-area.short-map .map-title h1{font-size:18px}.map-area.short-map .map-title p{margin:3px 0}
+.map-area.short-map .map-toolbar{top:75px;left:28px;right:auto}.map-area.short-map .property-card{top:115px}
+@media(max-width:760px){.circuit-window .circuit-header span{display:none}.circuit-window .circuit-body{grid-template-columns:110px minmax(0,1fr) 170px}.circuit-window .battery-inspector{position:static;width:auto;max-height:none;border-radius:0}.circuit-window .circuit-header b{font-size:14px}.map-area.with-table{min-height:360px}.circuit-window .circuit-footer{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
