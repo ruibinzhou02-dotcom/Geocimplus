@@ -80,6 +80,41 @@ Excel构建使用Codex提供的 `@oai/artifact-tool` 和Node环境。当前 `scr
 
 ## 本地Git与隐私
 
-只跟踪脚本、前端/后端源码、模板、锁文件和使用说明。报告、属性样例、影像、衍生数据、实际catalog/确认记录、环境、缓存、密钥和构建产物均被忽略。没有远程仓库，没有上传或互联网部署。
+只跟踪脚本、前端/后端源码、模板、锁文件和使用说明。报告、属性样例、影像、衍生数据、实际catalog/确认记录、环境、缓存、密钥和构建产物均被忽略。当前示例与运行产物默认本地存储，不在仓库中放原始敏感数据。
 
 报告中的地名来自本地元数据，地图范围由本地边界动态计算；业务源码不包含研究区坐标或原始属性记录。当前不需要API密钥。
+
+## 账号切换与项目交接（2026-09-11）
+
+GeoCIM 已完成 GitHub 推送，仓库为：
+
+- `https://github.com/ruibinzhou02-dotcom/Geocimplus`
+- 当前分支：`main`
+- 当前远端提交：`81e00ca0b0f17453273394b4375adc4bd9a255d1`
+
+接手流程（新账号）：
+
+1. 克隆项目到本机：`git clone https://github.com/ruibinzhou02-dotcom/Geocimplus.git`
+2. 进入目录：`cd GeoCIM_Demo`（当前你使用的是 `D:\GeoCIM_Demo`）
+3. 安装依赖：`pnpm install --frozen-lockfile`，再建环境并装 Python 依赖：`python -m venv geocim-dev`
+4. 启动与访问：`./start.ps1`，打开 `http://127.0.0.1:8765/`
+5. 停止服务：`./stop.ps1`
+
+关键资产（不在仓库内）：
+
+- 你的本地原始 GIS 数据目录：`C:\Users\pc\Desktop\TOSHP\TOSHP`
+- 示例运行目录与派生数据：`D:\GeoCIM_Demo` 下的 `data/`、`reports/`（按任务更新）
+- 服务器部署时使用的密钥与配置不应写入仓库：`D:\GeoCIM_Demo\private` 中的授权脚本/连接材料仅用于本机操作，不用于公开提交
+
+本地维护约定：
+
+- 源码只改 `GeoCIM_Demo` 的现有文件，不重建仓库。
+- 远端仓库为唯一“交接凭据”，任何新增内容请提交后 `git push origin main`。
+- 敏感数据、原始数据、API key、服务器私钥统一放在本机私有目录，不提交到仓库。
+- 交接前先执行：
+  - `git status --short`
+  - `git pull --ff-only`
+  - `git log --oneline --max-count=5`
+- 功能验收脚本按本文档 `验证` 与 `环境与复现` 章节执行即可复现基本链路。
+
+
