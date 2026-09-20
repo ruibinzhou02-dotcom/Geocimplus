@@ -41,6 +41,8 @@ try {
   }
   const execute = async (type, p) => {
     if (type === "grid") {
+      if (!p.grid && (!Number.isFinite(p.size) || p.size < 30 || p.size > 1000))
+        throw new Error("Cloud grid size must be 30–1000 m.");
       const g = p.grid || makeGrid(p.raster, p.size, p.crs);
       if (g.cols * g.rows > 30000 || g.size < 30)
         throw new Error(
@@ -72,7 +74,11 @@ try {
       layers,
       () => {},
       execute,
-      async (p) => analyze(p.data, p.options),
+      async (p) => {
+        if (p.options.operation === "kde" && p.options.cellSize < 30)
+          throw new Error("Cloud density cell size must be at least 30 m.");
+        return analyze(p.data, p.options);
+      },
     );
   const execution = {
     location: "server",

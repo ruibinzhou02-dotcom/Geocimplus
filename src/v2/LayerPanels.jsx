@@ -35,8 +35,11 @@ export function LayerTree({
           )
         }
       />
-      <button title={l.name} onClick={() => onSelect(l.id)}>
-        <span>{layerIcon(l)}</span> {l.name}
+      <button
+        title={t(l.name, l.nameZh || l.name)}
+        onClick={() => onSelect(l.id)}
+      >
+        <span>{layerIcon(l)}</span> {t(l.name, l.nameZh || l.name)}
       </button>
       {!canEdit(l) && <span title={t("Read-only data", "数据只读")}>▣</span>}
       {l.kind === "vector" && (
@@ -131,7 +134,7 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
   if (l.kind === "summary")
     return (
       <div className="v2-layer-style">
-        <h2>{l.name}</h2>
+        <h2>{t(l.name, l.nameZh || l.name)}</h2>
         <span className="v2-chip">{t("Result report", "结果报告")}</span>
         <dl className="v2-stat-report">
           {Object.entries(l.data.values || {}).map(([k, v]) => (
@@ -145,7 +148,11 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
             </React.Fragment>
           ))}
         </dl>
-        <button onClick={() => jsonDownload(l.data, `${l.name}.json`)}>
+        <button
+          onClick={() =>
+            jsonDownload(l.data, `${t(l.name, l.nameZh || l.name)}.json`)
+          }
+        >
           {t("Export report", "导出报告")}
         </button>
       </div>
@@ -156,7 +163,7 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
     classified = classifyLayer(l);
   return (
     <div className="v2-layer-style">
-      <h2>{l.name}</h2>
+      <h2>{t(l.name, l.nameZh || l.name)}</h2>
       <span className="v2-chip">
         {t(...ROOT_LAYERS.find(([id]) => id === bucketOf(l)).slice(1, 3))} ·{" "}
         {canEdit(l)
@@ -351,6 +358,9 @@ export function UploadPanel({
           <option value="dem">{t("Elevation", "高程")}</option>
           <option value="lst">LST</option>
           <option value="imagery">{t("Base imagery", "底图")}</option>
+          <option value="flatImagery">
+            {t("Flat satellite reference", "平面卫星底图")}
+          </option>
         </select>
       </label>
       <label>
@@ -367,8 +377,8 @@ export function UploadPanel({
       <p>Shapefile · GeoJSON · GeoTIFF · EPW</p>
       <small>
         {t(
-          "Shapefile: select .shp, .shx, .dbf, .prj and .cpg together, or a ZIP. One dataset becomes one child layer. EPW files go to the Weather plugin.",
-          "Shapefile 请同时选择 .shp、.shx、.dbf、.prj、.cpg，或选择 ZIP。每份数据成为一个子图层；EPW 文件进入气象插件。",
+          "Shapefile: select .shp, .shx, .dbf, .prj and .cpg together, or a ZIP. EPW files go to the Weather plugin.",
+          "Shapefile 请同时选择 .shp、.shx、.dbf、.prj、.cpg，或选择 ZIP。EPW 文件进入气象插件。",
         )}
       </small>
       <hr />
@@ -382,7 +392,7 @@ export function UploadPanel({
         .filter((l) => l.kind === "raster")
         .map((l) => (
           <details key={l.id}>
-            <summary>{l.name}</summary>
+            <summary>{t(l.name, l.nameZh || l.name)}</summary>
             <p>
               {l.crs} · {l.unit || t("Unit not specified", "单位待确认")}
               <br />
@@ -399,7 +409,8 @@ export function ConversionPanel({ layers, onConvert, busy, t }) {
     [size, setSize] = useState(30),
     [name, setName] = useState("");
   const rasters = layers.filter(
-      (l) => l.kind === "raster" && l.role !== "imagery",
+      (l) =>
+        l.kind === "raster" && !["imagery", "flatImagery"].includes(l.role),
     ),
     source = rasters.find((l) => l.id === id) || rasters[0];
   return (
@@ -419,7 +430,7 @@ export function ConversionPanel({ layers, onConvert, busy, t }) {
           )}
           {rasters.map((l) => (
             <option key={l.id} value={l.id}>
-              {l.name}
+              {t(l.name, l.nameZh || l.name)}
             </option>
           ))}
         </select>
@@ -513,7 +524,7 @@ export function LayerManager({
         {t("Layer name", "图层名称")}
         <input
           disabled={!editable}
-          value={l.name}
+          value={t(l.name, l.nameZh || l.name)}
           onChange={(e) => onChange({ name: e.target.value })}
         />
       </label>
@@ -569,6 +580,9 @@ export function LayerManager({
               <option value="dem">{t("Elevation", "高程")}</option>
               <option value="lst">LST</option>
               <option value="imagery">{t("Base imagery", "底图")}</option>
+              <option value="flatImagery">
+                {t("Flat satellite reference", "平面卫星底图")}
+              </option>
             </select>
           </label>
           <label>

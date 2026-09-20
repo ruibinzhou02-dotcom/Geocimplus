@@ -2,6 +2,7 @@ import { resampleGrid } from "./resample.mjs";
 import { readRaster, makeGrid, aggregate } from "./raster-grid.mjs";
 import { parseEPW } from "./epw.mjs";
 import { flattenGround, clipGrid } from "./ground.mjs";
+import { flatImagery } from "./flat-imagery.mjs";
 import { drapeTexture } from "./texture.mjs";
 import { formulaGrid } from "./formula.mjs";
 self.onmessage = async ({ data: { id, type, payload } }) => {
@@ -24,6 +25,8 @@ self.onmessage = async ({ data: { id, type, payload } }) => {
       result = flattenGround(payload.grid, payload.features);
     else if (type === "texture")
       result = drapeTexture(payload.raster, payload.grid);
+    else if (type === "flatTexture")
+      result = flatImagery(payload.raster, payload.grid, payload.z);
     else if (type === "epw") result = parseEPW(payload.text);
     else if (type === "rhino") {
       const { exportRhino } = await import("./rhino-export.mjs");

@@ -174,6 +174,34 @@ export default function Scene({
     const elevationLayer = layers.find((l) => l.id === grid.source),
       analysisLayer = layers.find((l) => l.id === lst?.source),
       imageLayer = layers.find((l) => l.role === "imagery");
+    const flatLayer = layers.find((l) => l.role === "flatImagery");
+    if (
+      style.flatImagery &&
+      model.flatTexture &&
+      flatLayer?.visible !== false
+    ) {
+      const f = model.flatTexture,
+        tex = new THREE.DataTexture(
+          f.texture.pixels,
+          f.texture.width,
+          f.texture.height,
+        );
+      tex.needsUpdate = true;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.flipY = true;
+      group.add(
+        new THREE.Mesh(
+          geometry(f.mesh),
+          new THREE.MeshBasicMaterial({
+            map: tex,
+            transparent: true,
+            opacity: flatLayer?.symbology?.opacity ?? 1,
+            side: THREE.DoubleSide,
+            depthWrite: true,
+          }),
+        ),
+      );
+    }
     if (style.terrain && elevationLayer?.visible !== false) {
       const g = geometry(terrain),
         st = stats(grid.mean),

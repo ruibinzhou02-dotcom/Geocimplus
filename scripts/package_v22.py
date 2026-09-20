@@ -2,7 +2,7 @@ from pathlib import Path
 import tarfile,json,datetime
 r=Path.cwd(); release=datetime.datetime.now().strftime('%Y%m%d-%H%M%S-v22')
 archive=r/'releases'/f'{release}.tar.gz'
-allowed=['catalog.json','dem.tif','lst.tif','basemap.tif','buildings.geojson','boundary.geojson','weather.epw']
+allowed=['catalog.json','dem.tif','lst.tif','basemap.tif','buildings.geojson','boundary.geojson','roads.geojson','weather.epw']
 with tarfile.open(archive,'w:gz') as t:
  for name in ['cloud-server.mjs','cloud-worker.mjs']: t.add(r/'releases/cloud-v2'/name,arcname=name)
  t.add(r/'dist/v2.html',arcname='web/v2.html')

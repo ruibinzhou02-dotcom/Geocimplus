@@ -12,6 +12,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   COMPONENTS,
+  validateInputLayer,
   PORT_TYPES,
   analysisGraph,
   defaultGraph,
@@ -21,17 +22,31 @@ import {
   ungroup,
 } from "./circuit.mjs";
 import { remapDemoGraph } from "./layer-policy.mjs";
+import { localLabel, portLabel } from "./circuit-labels.mjs";
+import NumberSlider from "./NumberSlider.jsx";
 import { jsonDownload } from "./project.mjs";
 function Battery({ data, selected }) {
-  const def = COMPONENTS[data.component];
+  const def = COMPONENTS[data.component],
+    t = data.t;
   return (
     <div
       className={
         "v2-battery " + (selected ? "selected " : "") + (data.status || "")
       }
     >
-      <small>{def.group}</small>
-      <b>{def.label}</b>
+      <small>{localLabel(def.group, t)}</small>
+      <b>{localLabel(def.label, t)}</b>
+      {data.component === "number" && (
+        <NumberSlider
+          label={t("Value", "数值")}
+          value={data.params?.value ?? 30}
+          min={data.params?.min ?? 0}
+          max={data.params?.max ?? 100}
+          step={data.params?.step ?? 1}
+          onChange={data.setNumber}
+          disabled={data.busy}
+        />
+      )}
       <div className="v2-ports">
         {Object.entries(def.inputs).map(([k, v], i) => (
           <div key={k}>
@@ -39,11 +54,13 @@ function Battery({ data, selected }) {
               type="target"
               position={Position.Left}
               id={k}
-              title={PORT_TYPES[v.replace("?", "")]}
+              title={localLabel(PORT_TYPES[v.replace("?", "")], t)}
               style={{ top: 80 + i * 25 }}
             />
-            {k}
-            <em title={PORT_TYPES[v.replace("?", "")]}>{v}</em>
+            {portLabel(k, t)}
+            <em title={localLabel(PORT_TYPES[v.replace("?", "")], t)}>
+              {portLabel(v, t)}
+            </em>
           </div>
         ))}
       </div>
@@ -53,14 +70,15 @@ function Battery({ data, selected }) {
         id="out"
         style={{ top: 40 }}
       />
-      <span className="v2-out-type" title={PORT_TYPES[def.out]}>
-        {def.out} →
+      <span className="v2-out-type" title={localLabel(PORT_TYPES[def.out], t)}>
+        {portLabel(def.out, t)} →
       </span>
       <footer>
-        {data.params?.layer ||
+        {data.layerName ||
+          data.params?.layer ||
           data.params?.expression ||
           data.params?.crs ||
-          def.out}
+          portLabel(def.out, t)}
       </footer>
     </div>
   );
@@ -162,7 +180,16 @@ export default function Circuit({
         {
           id,
           type: "battery",
-          position: { x: 150 + g.nodes.length * 25, y: 100 },
+          position: {
+            x: 0,
+            y:
+              Math.max(
+                -200,
+                ...g.nodes
+                  .filter((n) => !n.parentId)
+                  .map((n) => n.position.y + (n.height || 210)),
+              ) + 60,
+          },
           data: { component, params: {} },
         },
       ],
@@ -290,12 +317,12 @@ export default function Circuit({
           {[...new Set(Object.values(COMPONENTS).map((d) => d.group))].map(
             (group) => (
               <section key={group}>
-                <small>{group}</small>
+                <small>{localLabel(group, t)}</small>
                 {Object.entries(COMPONENTS)
                   .filter(([, d]) => d.group === group)
                   .map(([key, d]) => (
                     <button key={key} disabled={busy} onClick={() => add(key)}>
-                      ＋ {d.label}
+                      ＋ {localLabel(d.label, t)}
                     </button>
                   ))}
               </section>
@@ -305,7 +332,35 @@ export default function Circuit({
         <ReactFlow
           nodes={graph.nodes.map((n) => ({
             ...n,
-            data: { ...n.data, status: status[n.id] },
+            data: {
+              ...n.data,
+              label:
+                n.data?.label === "Component group"
+                  ? t("Component group", "电池组")
+                  : n.data?.label,
+              status: status[n.id],
+              t,
+              layerName: (() => {
+                const l = layers.find((l) => l.id === n.data?.params?.layer);
+                return l ? t(l.name, l.nameZh || l.name) : "";
+              })(),
+              busy,
+              setNumber: (v) =>
+                setGraph((g) => ({
+                  ...g,
+                  nodes: g.nodes.map((x) =>
+                    x.id === n.id
+                      ? {
+                          ...x,
+                          data: {
+                            ...x.data,
+                            params: { ...x.data.params, value: v },
+                          },
+                        }
+                      : x,
+                  ),
+                })),
+            },
           }))}
           edges={graph.edges}
           nodeTypes={nodeTypes}
@@ -329,7 +384,7 @@ export default function Circuit({
         <aside>
           <b>
             {n
-              ? COMPONENTS[n.data.component].label
+              ? localLabel(COMPONENTS[n.data.component].label, t)
               : t("Component settings", "电池参数")}
           </b>
           {!n && (
@@ -342,6 +397,82 @@ export default function Circuit({
           )}
           {n && (
             <>
+              {n.data.component === "number" && (
+                <>
+                  <NumberSlider
+                    label={t("Value", "数值")}
+                    value={params.value ?? 30}
+                    min={params.min ?? 0}
+                    max={params.max ?? 100}
+                    step={params.step ?? 1}
+                    onChange={(v) => update({ value: v })}
+                    disabled={busy}
+                  />
+                  {[
+                    ["min", "Minimum", "最小值", 0],
+                    ["max", "Maximum", "最大值", 100],
+                    ["step", "Step", "步长", 1],
+                  ].map(([key, en, zh, d]) => (
+                    <label key={key}>
+                      {t(en, zh)}
+                      <input
+                        aria-label={en + " slider range"}
+                        type="number"
+                        defaultValue={params[key] ?? d}
+                        key={n.id + key}
+                        disabled={busy}
+                        onBlur={(e) => {
+                          const value = Number(e.target.value),
+                            p = {
+                              min: 0,
+                              max: 100,
+                              step: 1,
+                              ...params,
+                              [key]: value,
+                            };
+                          if (
+                            e.target.value === "" ||
+                            !Number.isFinite(value) ||
+                            p.min >= p.max ||
+                            p.step <= 0
+                          ) {
+                            setMessage(
+                              t(
+                                "Enter a valid range and positive step.",
+                                "请输入有效范围与正步长。",
+                              ),
+                            );
+                            e.target.value = String(params[key] ?? d);
+                            return;
+                          }
+                          update({
+                            [key]: value,
+                            value: Math.max(
+                              p.min,
+                              Math.min(p.max, params.value ?? 30),
+                            ),
+                          });
+                          setMessage("");
+                        }}
+                      />
+                    </label>
+                  ))}
+                </>
+              )}
+              {graph.edges.some(
+                (e) =>
+                  e.target === n.id &&
+                  ["size", "distance", "bandwidth", "cellSize"].includes(
+                    e.targetHandle,
+                  ),
+              ) && (
+                <p>
+                  {t(
+                    "Connected number inputs override the values below.",
+                    "已连接的数值输入优先于下方参数。",
+                  )}
+                </p>
+              )}
               {[
                 "raster",
                 "vector",
@@ -368,11 +499,18 @@ export default function Circuit({
                                   )
                                 ? "vector"
                                 : n.data.component) &&
-                          (n.data.component !== "gridInput" || l.gridData),
+                          (() => {
+                            try {
+                              validateInputLayer(n.data.component, l);
+                              return true;
+                            } catch {
+                              return false;
+                            }
+                          })(),
                       )
                       .map((l) => (
                         <option key={l.id} value={l.id}>
-                          {l.name}
+                          {t(l.name, l.nameZh || l.name)}
                         </option>
                       ))}
                   </select>
@@ -380,16 +518,14 @@ export default function Circuit({
               )}
               {n.data.component === "grid" && (
                 <>
-                  <label>
-                    {t("Cell size · m", "网格大小 · 米")}
-                    <input
-                      type="number"
-                      min="5"
-                      max="5000"
-                      value={params.size || 30}
-                      onChange={(e) => update({ size: +e.target.value })}
-                    />
-                  </label>
+                  <NumberSlider
+                    label={t("Cell size · m", "网格大小 · 米")}
+                    value={params.size ?? 30}
+                    min={mode === "cloud" ? 30 : 5}
+                    max={mode === "cloud" ? 1000 : 5000}
+                    onChange={(v) => update({ size: v })}
+                    disabled={busy}
+                  />
                   <label>
                     CRS
                     <input
@@ -433,16 +569,14 @@ export default function Circuit({
                 </label>
               )}
               {n.data.component === "buffer" && (
-                <label>
-                  {t("Distance · m", "距离 · 米")}
-                  <input
-                    type="number"
-                    min="1"
-                    max="5000"
-                    value={params.distance ?? 100}
-                    onChange={(e) => update({ distance: +e.target.value })}
-                  />
-                </label>
+                <NumberSlider
+                  label={t("Distance · m", "距离 · 米")}
+                  value={params.distance ?? 100}
+                  min={1}
+                  max={5000}
+                  onChange={(v) => update({ distance: v })}
+                  disabled={busy}
+                />
               )}
               {n.data.component === "kde" && (
                 <>
@@ -450,16 +584,39 @@ export default function Circuit({
                     ["bandwidth", "Bandwidth · m", "带宽 · 米", 200],
                     ["cellSize", "Cell size · m", "网格大小 · 米", 50],
                   ].map(([k, en, zh, d]) => (
-                    <label key={k}>
-                      {t(en, zh)}
-                      <input
-                        type="number"
-                        min="5"
-                        max="5000"
-                        value={params[k] ?? d}
-                        onChange={(e) => update({ [k]: +e.target.value })}
-                      />
-                    </label>
+                    <NumberSlider
+                      key={k}
+                      label={t(en, zh)}
+                      value={params[k] ?? d}
+                      min={
+                        k === "bandwidth"
+                          ? mode === "cloud"
+                            ? 30
+                            : 10
+                          : mode === "cloud"
+                            ? 30
+                            : 5
+                      }
+                      max={
+                        k === "cellSize"
+                          ? Math.max(
+                              mode === "cloud" ? 30 : 5,
+                              params.bandwidth ?? 200,
+                            )
+                          : 5000
+                      }
+                      onChange={(v) =>
+                        update(
+                          k === "bandwidth"
+                            ? {
+                                bandwidth: v,
+                                cellSize: Math.min(params.cellSize ?? 50, v),
+                              }
+                            : { [k]: v },
+                        )
+                      }
+                      disabled={busy}
+                    />
                   ))}
                   <label>
                     {t("Weight field · optional", "权重字段 · 可选")}
@@ -500,8 +657,8 @@ export default function Circuit({
                     x, + − × / ^, abs, sqrt, min, max, clamp.
                     <br />
                     {t(
-                      "Example: clamp((x - 25) / 15, 0, 1). Runs locally in a restricted expression language.",
-                      "示例：clamp((x - 25) / 15, 0, 1)。仅运行本地受限表达式。",
+                      "Example: clamp((x - 25) / 15, 0, 1). Uses a restricted expression language.",
+                      "示例：clamp((x - 25) / 15, 0, 1)。仅运行受限表达式。",
                     )}
                   </p>
                 </>
@@ -553,18 +710,21 @@ export default function Circuit({
                 ([port, type]) => (
                   <p key={port}>
                     <b>
-                      {port} · {type}
+                      {portLabel(port, t)} · {portLabel(type, t)}
                     </b>
                     <br />
-                    {PORT_TYPES[type.replace("?", "")]}{" "}
-                    {type.endsWith("?") ? "(optional)" : "(required)"}
+                    {localLabel(PORT_TYPES[type.replace("?", "")], t)}{" "}
+                    {type.endsWith("?")
+                      ? t("(optional)", "（可选）")
+                      : t("(required)", "（必需）")}
                   </p>
                 ),
               )}
               <p>
-                out · {COMPONENTS[n.data.component].out}
+                {t("Output", "输出")} ·{" "}
+                {portLabel(COMPONENTS[n.data.component].out, t)}
                 <br />
-                {PORT_TYPES[COMPONENTS[n.data.component].out]}
+                {localLabel(PORT_TYPES[COMPONENTS[n.data.component].out], t)}
               </p>
             </details>
           )}

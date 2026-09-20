@@ -87,6 +87,8 @@ def main():
                     {'id':'epw', 'name':'Shenzhen · typical weather year', 'kind':'epw', 'url':'weather.epw'}],
                 'warnings':audit['warnings']}
     (OUT / 'catalog.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+    from prepare_v2_roads import prepare_roads
+    prepare_roads()
     assert before == hashes(), 'Source contents changed during preparation'
     audit['source_files_unchanged'] = True
     (REPORT / 'data-audit.json').write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding='utf-8')

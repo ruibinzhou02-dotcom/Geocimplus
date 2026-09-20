@@ -27,6 +27,7 @@ export async function encodeRhino(rhino, model, layers, style) {
       acquisition: l.acquisition,
       crs: l.crs,
     })),
+    flatImageryReferenceZ: model.flatTexture?.referenceZ ?? null,
     created: new Date().toISOString(),
   };
   file.strings().set("GeoCIM:georeference", JSON.stringify(meta));
@@ -40,6 +41,10 @@ export async function encodeRhino(rhino, model, layers, style) {
     ["05_Buildings", style.buildingColor],
     ["06_LST", "#db8565"],
     ["07_Analysis", "#9875bd"],
+    ...(model.flatTexture ? [["08_FlatBaseMap", "#aaaaaa"]] : []),
+    ...(layers.some((l) => l.id === "roads")
+      ? [["09_RoadNetwork", "#d1a878"]]
+      : []),
   ]) {
     const l = new rhino.Layer();
     l.name = name;
@@ -69,12 +74,26 @@ export async function encodeRhino(rhino, model, layers, style) {
     file.materials().add(m);
     m.delete();
   }
+  let flatMaterial = -1;
+  if (model.flatTexture) {
+    const m = new rhino.Material();
+    m.name = "GeoCIM flat satellite";
+    m.diffuseColor = { r: 255, g: 255, b: 255, a: 255 };
+    m.setBitmapTextureFilename("satellite-flat.png");
+    flatMaterial = file.materials().count;
+    file.materials().add(m);
+    m.delete();
+  }
   const mesh = (m, layer, name, extra = {}) => {
     if (!m.indices.length) return;
     const rm = new rhino.Mesh(),
       a = attrs(layer, name);
     if (layer === "02_BaseMap" && imageryMaterial >= 0) {
       a.materialIndex = imageryMaterial;
+      a.materialSource = rhino.ObjectMaterialSource.MaterialFromObject;
+    }
+    if (layer === "08_FlatBaseMap" && flatMaterial >= 0) {
+      a.materialIndex = flatMaterial;
       a.materialSource = rhino.ObjectMaterialSource.MaterialFromObject;
     }
     for (let i = 0; i < m.positions.length; i += 3)
@@ -121,7 +140,11 @@ export async function encodeRhino(rhino, model, layers, style) {
   for (const line of vectorLines(layers, model.grid, model.terrain)) {
     if (line.points.length < 2) continue;
     const a = attrs(
-      line.layerId === "boundary" ? "01_Boundary" : "07_Analysis",
+      line.layerId === "boundary"
+        ? "01_Boundary"
+        : line.layerId === "roads"
+          ? "09_RoadNetwork"
+          : "07_Analysis",
       line.name,
     );
     file.objects().addPolyline(line.points, a);
@@ -180,6 +203,27 @@ export async function encodeRhino(rhino, model, layers, style) {
       },
     );
   }
+  if (model.flatTexture) {
+    const {
+        mesh: m,
+        texture: { width, height, pixels },
+      } = model.flatTexture,
+      colors = new Float32Array(m.positions.length);
+    for (let i = 0; i < m.uv.length / 2; i++) {
+      const x = Math.min(width - 1, Math.floor(m.uv[i * 2] * width)),
+        y = Math.min(height - 1, Math.floor((1 - m.uv[i * 2 + 1]) * height)),
+        k = (y * width + x) * 4;
+      colors.set(
+        [pixels[k] / 255, pixels[k + 1] / 255, pixels[k + 2] / 255],
+        i * 3,
+      );
+    }
+    mesh({ ...m, colors }, "08_FlatBaseMap", "Flat satellite reference", {
+      texture_file: "satellite-flat.png",
+      reference_plane: true,
+      z: model.flatTexture.referenceZ,
+    });
+  }
   const bytes = file.toByteArray(),
     check = rhino.File3dm.fromByteArray(bytes);
   if (!check || check.layers().count < 8 || check.objects().count === 0)
@@ -203,15 +247,19 @@ export async function exportRhino(model, layers, style) {
       "GeoCIM.3dm": result.bytes,
       "georeference.json": strToU8(JSON.stringify(result.meta, null, 2)),
     };
-  if (model.texture) {
-    const { width, height, pixels } = model.texture,
+  for (const [name, texture] of [
+    ["texture.png", model.texture],
+    ["satellite-flat.png", model.flatTexture?.texture],
+  ]) {
+    if (!texture) continue;
+    const { width, height, pixels } = texture,
       c = new OffscreenCanvas(width, height);
     c.getContext("2d").putImageData(
       new ImageData(new Uint8ClampedArray(pixels), width, height),
       0,
       0,
     );
-    entries["texture.png"] = new Uint8Array(
+    entries[name] = new Uint8Array(
       await (await c.convertToBlob()).arrayBuffer(),
     );
   }

@@ -5,7 +5,7 @@ from urllib.parse import urlsplit, unquote
 import argparse
 
 ROOT = Path(__file__).resolve().parents[1]
-ALLOWED = {'catalog.json', 'dem.tif', 'lst.tif', 'basemap.tif', 'buildings.geojson', 'boundary.geojson', 'weather.epw'}
+ALLOWED = {'catalog.json', 'dem.tif', 'lst.tif', 'basemap.tif', 'buildings.geojson', 'boundary.geojson','roads.geojson', 'weather.epw'}
 
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):

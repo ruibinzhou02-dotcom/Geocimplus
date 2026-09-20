@@ -12,7 +12,7 @@ export const CATEGORIES = [
 export function categoryOf(l) {
   if (CATEGORIES.some(([id]) => id === l.category)) return l.category;
   if (l.heightField) return "buildings";
-  if (l.role === "imagery") return "basemap";
+  if (["imagery", "flatImagery"].includes(l.role)) return "basemap";
   if (l.role === "dem") return "terrain";
   if (l.id === "boundary" || l.role === "boundary") return "boundary";
   if (l.role === "lst" || l.analysis || l.gridData) return "analysis";

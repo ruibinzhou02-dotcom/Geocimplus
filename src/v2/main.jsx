@@ -51,6 +51,13 @@ import {
 } from "./LayerPanels.jsx";
 import Scene from "./Scene.jsx";
 import Climate from "./Climate.jsx";
+import DatasetBrowser from "./DatasetBrowser.jsx";
+import {
+  inspectDatasets,
+  mergeCatalogFiles,
+  suggestedCategory,
+  geometryType,
+} from "./import-catalog.mjs";
 import Attributes from "./Attributes.jsx";
 import "./style.css";
 const Circuit = lazy(() => import("./Circuit.jsx"));
@@ -71,8 +78,15 @@ const initialStyle = {
   opacity: 0.8,
   imagery: true,
   imageryOpacity: 1,
+  flatImagery: true,
 };
 function App() {
+  const [catalogOpen, setCatalogOpen] = useState(false),
+    [catalogFiles, setCatalogFiles] = useState([]),
+    [catalogEntries, setCatalogEntries] = useState([]),
+    [catalogSelected, setCatalogSelected] = useState([]),
+    [catalogCategories, setCatalogCategories] = useState({});
+  const folderInput = useRef(null);
   const [mode, setMode] = useState("local"),
     [isDemo, setIsDemo] = useState(false),
     [cloudReady, setCloudReady] = useState(false),
@@ -177,6 +191,13 @@ function App() {
       );
       const g = remapDemoGraph(defaultGraph(), ls);
       for (const n of g.nodes) {
+        if (n.id === "resolution")
+          n.data.params = {
+            ...n.data.params,
+            value: options.size ?? size,
+            min: Math.min(30, options.size ?? size),
+            max: Math.max(500, options.size ?? size),
+          };
         if (n.data.component === "grid")
           n.data.params = { ...n.data.params, size: options.size ?? size };
         if (n.data.component === "ground")
@@ -333,7 +354,15 @@ function App() {
     const texture = imagery
       ? await job("texture", { raster: imagery, grid: scene.grid })
       : null;
-    setModel({ ...scene, terrain, buildings, texture });
+    const flatLayer = ls.find((l) => l.role === "flatImagery");
+    const flatTexture = flatLayer
+      ? await job("flatTexture", {
+          raster: flatLayer,
+          grid: scene.grid,
+          z: Math.min(0, stats(scene.grid.mean).min ?? 0) - 30,
+        })
+      : null;
+    setModel({ ...scene, terrain, buildings, texture, flatTexture });
     setWeather(scene.weather || ls.find((l) => l.kind === "epw") || null);
     setPicked(null);
     setSelection([]);
@@ -383,6 +412,19 @@ function App() {
         else ls.push({ ...meta, data: await f.json() });
       }
       const prepared = demoWorkingLayers(ls);
+      const base = ls.find((l) => l.id === "basemap");
+      if (base)
+        prepared.push({
+          ...base,
+          id: "basemap-flat",
+          name: "Satellite · flat reference",
+          nameZh: "卫星底图 · 平面参考",
+          role: "flatImagery",
+          category: "basemap",
+          bucket: "display",
+          cloudSource: null,
+          visible: true,
+        });
       ls.splice(0, ls.length, ...prepared);
       setIsDemo(true);
       setMode("cloud");
@@ -416,7 +458,7 @@ function App() {
     setTable(false);
     setCircuit(false);
   };
-  const importData = (files) =>
+  const importData = (files, selectionEntries = null) =>
     guard(async () => {
       localize();
       if (
@@ -448,7 +490,12 @@ function App() {
                 name: f.name,
                 visible: true,
                 role: uploadRole,
-                category: uploadCategory,
+                category: (() => {
+                  const e = selectionEntries?.find((e) => e.files.includes(f));
+                  return e
+                    ? catalogCategories[e.id] || suggestedCategory(e)
+                    : uploadCategory;
+                })(),
                 ...(uploadUnit.trim() ? { unit: uploadUnit.trim() } : {}),
               },
             }),
@@ -456,16 +503,31 @@ function App() {
         else vectorFiles.push(f);
       }
       if (vectorFiles.length) {
-        const items = await runJob({ job: "import", files: vectorFiles })
-          .promise;
-        ls.push(
-          ...items.map((i) => ({ ...i, visible: true, heightField: "" })),
-        );
+        const groups = selectionEntries
+          ? selectionEntries.filter((e) =>
+              ["Shapefile", "GeoJSON"].includes(e.format),
+            )
+          : [{ files: vectorFiles }];
+        for (const entry of groups) {
+          const items = await runJob({ job: "import", files: entry.files })
+            .promise;
+          ls.push(
+            ...items.map((i) => ({
+              ...i,
+              visible: true,
+              heightField: "",
+              geometryType: geometryType(i.data.features),
+              category: entry.id
+                ? catalogCategories[entry.id] || suggestedCategory(entry)
+                : uploadCategory,
+            })),
+          );
+        }
       }
       ls = ls.map((l) =>
         normalizeLayer({
           ...l,
-          category: l.kind === "epw" ? undefined : uploadCategory,
+          category: l.kind === "epw" ? undefined : l.category || uploadCategory,
           bucket: uploadBucket,
           cloudSource: null,
         }),
@@ -474,6 +536,8 @@ function App() {
       if (all.length > 24) throw new Error("Project limit: 24 layers.");
       setLayers(all);
       setScreen("workspace");
+      setCatalogOpen(false);
+      setCatalogFiles([]);
       await construct(all, { mode: "local" });
     });
   const restore = async (p) => {
@@ -912,6 +976,31 @@ function App() {
       if (activeLayer.kind !== "summary")
         await construct(ls, { mode: "local" });
     });
+  const openCatalog = () => {
+    setCatalogFiles([]);
+    setCatalogEntries([]);
+    setCatalogSelected([]);
+    setCatalogCategories({});
+    setCatalogOpen(true);
+  };
+  const inspectCatalog = (files, append = true) =>
+    guard(async () => {
+      const next = mergeCatalogFiles(append ? catalogFiles : [], files);
+      const entries = await inspectDatasets(next);
+      setCatalogFiles(next);
+      setCatalogEntries(entries);
+      setCatalogSelected(entries.filter((e) => e.ready).map((e) => e.id));
+      setCatalogOpen(true);
+    });
+  const addCatalog = () => {
+    const chosen = catalogEntries.filter(
+      (e) => e.ready && catalogSelected.includes(e.id),
+    );
+    return importData(
+      chosen.flatMap((e) => e.files),
+      chosen,
+    );
+  };
   const chooser = (
     <>
       <input
@@ -919,12 +1008,38 @@ function App() {
         type="file"
         hidden
         multiple
-        accept=".shp,.shx,.dbf,.prj,.cpg,.zip,.geojson,.json,.tif,.tiff,.epw"
+        accept=".shp,.shx,.dbf,.prj,.cpg,.sbn,.sbx,.zip,.geojson,.json,.tif,.tiff,.epw"
         onChange={(e) => {
-          importData(Array.from(e.target.files));
+          inspectCatalog(Array.from(e.target.files));
           e.target.value = "";
         }}
       />
+      <input
+        ref={folderInput}
+        type="file"
+        hidden
+        multiple
+        webkitdirectory=""
+        onChange={(e) => {
+          inspectCatalog(Array.from(e.target.files));
+          e.target.value = "";
+        }}
+      />
+      {catalogOpen && (
+        <DatasetBrowser
+          entries={catalogEntries}
+          selected={catalogSelected}
+          setSelected={setCatalogSelected}
+          categories={catalogCategories}
+          setCategories={setCatalogCategories}
+          busy={busy}
+          onFiles={() => fileInput.current.click()}
+          onFolder={() => folderInput.current.click()}
+          onImport={addCatalog}
+          onClose={() => setCatalogOpen(false)}
+          t={t}
+        />
+      )}
       <input
         ref={projectInput}
         type="file"
@@ -988,26 +1103,26 @@ function App() {
               [
                 "shatou",
                 "01",
-                "Shatou",
-                "沙头",
                 "Urban Regeneration",
                 "城市更新",
+                "Shatou · Buildings, terrain and surface temperature",
+                "沙头项目 · 建筑、地形与地表温度分析",
               ],
               [
                 "mobility",
                 "02",
-                "Urban Mobility",
+                "Urban Transport",
                 "城市交通",
-                "Road · Rail · Low-altitude",
-                "道路 · 轨道 · 低空",
+                "Mobility demo · Road, rail and low-altitude systems",
+                "交通示例 · 道路、轨道与低空子系统",
               ],
               [
                 "campus",
                 "03",
-                "Campus Digital Twin",
-                "校园数字孪生",
-                "Campus · Live data",
-                "校园 · 实时数据",
+                "Digital Twin",
+                "数字孪生",
+                "Smart campus demo · Campus scenes and live data",
+                "智慧校园示例 · 校园场景与实时数据",
               ],
             ].map(([kind, num, en, zh, sub, subzh]) => (
               <button
@@ -1188,9 +1303,6 @@ function App() {
             onTable={tableOpen}
             t={t}
           />
-          <div className="v2-layer-footer">
-            {t("One dataset · one child layer", "一份数据 · 一个子图层")}
-          </div>
         </aside>
         <section
           className="v2-center"
@@ -1401,7 +1513,8 @@ function App() {
                   ["terrain", "Terrain surface", "地形曲面"],
                   ["lst", "Analysis colours", "分析色带"],
                   ["buildings", "Buildings", "建筑"],
-                  ["imagery", "Base imagery", "底图"],
+                  ["imagery", "Draped satellite", "地形卫星贴图"],
+                  ["flatImagery", "Flat satellite reference", "平面卫星底图"],
                   ["wire", "Grid borders", "网格边框"],
                 ].map(([k, en, zh]) => (
                   <label className="v2-check" key={k}>
@@ -1520,7 +1633,7 @@ function App() {
                   io={io}
                   onChoose={chooseFolder}
                   onRead={() =>
-                    guard(async () => importData(await inputFiles()))
+                    guard(async () => inspectCatalog(await inputFiles(), false))
                   }
                   t={t}
                 />
@@ -1533,7 +1646,7 @@ function App() {
                   setRole={setUploadRole}
                   unit={uploadUnit}
                   setUnit={setUploadUnit}
-                  onUpload={() => fileInput.current.click()}
+                  onUpload={openCatalog}
                   busy={busy}
                   layers={layers}
                   t={t}
@@ -1684,7 +1797,7 @@ function App() {
                 .filter((l) => l.kind === "epw")
                 .map((l) => (
                   <option value={l.id} key={l.id}>
-                    {l.name}
+                    {t(l.name, l.nameZh || l.name)}
                   </option>
                 ))}
             </select>

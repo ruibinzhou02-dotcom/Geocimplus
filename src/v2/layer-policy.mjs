@@ -21,6 +21,7 @@ export function copyToAnalysis(l, id = crypto.randomUUID()) {
     ...copy,
     id,
     name: `${l.name} · working copy`,
+    nameZh: l.nameZh ? `${l.nameZh} · 工作副本` : undefined,
     bucket: "analysis",
     visible: false,
     sourceDisplayId: l.id,
@@ -56,6 +57,7 @@ export function updateLayer(l, patch) {
   return {
     ...l,
     ...patch,
+    ...(Object.hasOwn(patch, "name") ? { nameZh: undefined } : {}),
     ...(dataChanged ? { cloudSource: null, modified: true } : {}),
   };
 }

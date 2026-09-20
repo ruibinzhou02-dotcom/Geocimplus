@@ -1,8 +1,11 @@
+import { localLabel } from "./circuit-labels.mjs";
+import { numberValue } from "./numeric-input.mjs";
 import { canAnalyze } from "./layer-policy.mjs";
 import { job } from "./jobs.mjs";
 import { runJob } from "../jobs.mjs";
 import { metricCRS, transform } from "./geo.mjs";
 export const COMPONENTS = {
+  number: { group: "Input", label: "Number slider", inputs: {}, out: "number" },
   gridInput: {
     group: "Input",
     label: "Fishnet input",
@@ -37,13 +40,13 @@ export const COMPONENTS = {
   buffer: {
     group: "Vector analysis",
     label: "Buffer",
-    inputs: { features: "vector" },
+    inputs: { features: "vector", distance: "number?" },
     out: "polygons",
   },
   kde: {
     group: "Vector analysis",
     label: "Point kernel density",
-    inputs: { features: "points" },
+    inputs: { features: "points", bandwidth: "number?", cellSize: "number?" },
     out: "polygons",
   },
   publish: {
@@ -70,7 +73,7 @@ export const COMPONENTS = {
   grid: {
     group: "Coordinate / Grid",
     label: "Raster → metric grid",
-    inputs: { raster: "raster", align: "grid?" },
+    inputs: { raster: "raster", align: "grid?", size: "number?" },
     out: "grid",
   },
   ground: {
@@ -126,6 +129,12 @@ export function defaultGraph() {
   return {
     version: 2,
     nodes: [
+      node("resolution", "number", 0, -230, {
+        value: 30,
+        min: 30,
+        max: 500,
+        step: 5,
+      }),
       node("dem", "raster", 0, 0, { layer: "dem" }),
       node("lst", "raster", 0, 220, { layer: "lst" }),
       node("buildings", "polygons", 270, -190, { layer: "buildings" }),
@@ -138,6 +147,7 @@ export function defaultGraph() {
       node("view", "output", 1100, 60),
     ],
     edges: [
+      edge("resolution", "grid", "size"),
       edge("dem", "grid", "raster"),
       edge("lst", "lstgrid", "raster"),
       edge("grid", "lstgrid", "align"),
@@ -153,6 +163,7 @@ export function defaultGraph() {
   };
 }
 export const PORT_TYPES = {
+  number: "Finite numerical value",
   raster: "Geo-referenced numeric or RGB raster",
   vector: "GeoJSON feature collection (WGS84)",
   points: "Point / MultiPoint features (WGS84)",
@@ -362,7 +373,8 @@ export async function evaluateGraph(
         args[port] = e ? results.get(e.source) : null;
       }
       let value;
-      if (
+      if (c === "number") value = numberValue(p);
+      else if (
         [
           "raster",
           "vector",
@@ -378,7 +390,7 @@ export async function evaluateGraph(
       } else if (c === "grid")
         value = await execute("grid", {
           raster: args.raster,
-          size: Number(p.size ?? 30),
+          size: Number(args.size ?? p.size ?? 30),
           crs:
             p.crs ||
             metricCRS(
@@ -411,9 +423,9 @@ export async function evaluateGraph(
           options: {
             operation: c,
             field: p.field || "",
-            distance: Number(p.distance ?? 100),
-            bandwidth: Number(p.bandwidth ?? 200),
-            cellSize: Number(p.cellSize ?? 50),
+            distance: Number(args.distance ?? p.distance ?? 100),
+            bandwidth: Number(args.bandwidth ?? p.bandwidth ?? 200),
+            cellSize: Number(args.cellSize ?? p.cellSize ?? 50),
             weightField: p.weightField || "",
             sourceId: args.features.id,
             sourceName: args.features.name,
@@ -423,6 +435,7 @@ export async function evaluateGraph(
         value = {
           ...value,
           name: `${def.label} · ${args.features.name}`,
+          nameZh: `${localLabel(def.label, (_, zh) => zh)} · ${args.features.nameZh || args.features.name}`,
           category: "analysis",
           heightField: "",
         };

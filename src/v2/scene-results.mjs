@@ -15,6 +15,7 @@ export function sceneResultLayers(scene, layers) {
     const result = {
       id: existing?.id || crypto.randomUUID(),
       name: key === "terrain" ? "Terrain · result grid" : "LST · result grid",
+      nameZh: key === "terrain" ? "地形 · 结果网格" : "地表温度 · 结果网格",
       kind: "vector",
       bucket: "results",
       category: "analysis",

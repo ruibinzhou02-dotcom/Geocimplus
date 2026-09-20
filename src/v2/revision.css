@@ -351,3 +351,149 @@
   margin: 0;
   min-width: 0;
 }
+
+/* File catalog mirrors GIS datasets rather than Windows file associations. */
+.v2-dataset-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: #29213855;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(5px);
+}
+.v2-dataset-browser {
+  width: min(1080px, 96vw);
+  max-height: 88vh;
+  background: #fff;
+  border: 1px solid #dbd0e7;
+  border-radius: 18px;
+  box-shadow: 0 20px 80px #39214833;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.v2-dataset-browser header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 28px 14px;
+  border-bottom: 1px solid #eee8f3;
+}
+.v2-dataset-browser h2 {
+  margin: 5px 0;
+  font-size: 23px;
+}
+.v2-dataset-browser .eyebrow {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #9373ae;
+}
+.v2-catalog-actions {
+  display: flex;
+  gap: 10px;
+  padding: 16px 28px;
+}
+.v2-catalog-list {
+  overflow: auto;
+  min-height: 180px;
+  padding: 0 28px 18px;
+}
+.v2-catalog-list table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+}
+.v2-catalog-list th {
+  font-weight: 500;
+  color: #93859e;
+  background: #faf8fc;
+  padding: 10px 8px;
+  position: sticky;
+  top: 0;
+}
+.v2-catalog-list td {
+  padding: 13px 8px;
+  border-bottom: 1px solid #eee8f3;
+  vertical-align: middle;
+  max-width: 290px;
+  overflow-wrap: anywhere;
+}
+.v2-catalog-list td small {
+  display: block;
+  margin-top: 5px;
+  color: #a494af;
+  font-size: 10px;
+}
+.v2-catalog-list td small.v2-catalog-issue {
+  color: #ac654c;
+}
+.v2-catalog-list select {
+  min-width: 112px;
+  max-width: 170px;
+  font-size: 12px;
+}
+.v2-catalog-list input[type="checkbox"] {
+  accent-color: #956db3;
+}
+.v2-catalog-list p {
+  color: #93859e;
+  text-align: center;
+  padding: 30px;
+}
+.v2-dataset-browser footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 28px;
+  background: #faf8fc;
+  font-size: 12px;
+  color: #93859e;
+}
+.v2-number-slider {
+  display: block;
+  margin: 12px 0;
+}
+.v2-number-slider > span {
+  display: block;
+  font-size: 11px;
+  color: #867091;
+  margin-bottom: 7px;
+}
+.v2-number-slider > div {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.v2-number-slider input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  height: 18px;
+  accent-color: #9671b5;
+  border: 0;
+}
+.v2-number-slider input[type="number"] {
+  width: 65px;
+  min-width: 0;
+  flex: none;
+  padding: 5px;
+  border: 1px solid #d9cce4;
+  border-radius: 5px;
+  background: #fff;
+  color: #45354f;
+  font-size: 12px;
+}
+.v2-battery > .v2-number-slider {
+  margin: 4px 10px 12px;
+}
+.v2-battery > .v2-number-slider input[type="number"] {
+  width: 62px;
+}
+.v2-battery > .v2-number-slider > span {
+  font-size: 10px;
+}

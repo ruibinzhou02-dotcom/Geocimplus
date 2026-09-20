@@ -1,4 +1,5 @@
 import { validateGraph, migrateGraph } from "../src/v2/circuit.mjs";
+import { numberValue } from "../src/v2/numeric-input.mjs";
 const SOURCES = new Set([
   "dem",
   "lst",
@@ -6,9 +7,14 @@ const SOURCES = new Set([
   "boundary",
   "basemap",
   "epw",
+  "roads",
 ]);
 const PARAMS = new Set([
   "layer",
+  "value",
+  "min",
+  "max",
+  "step",
   "size",
   "crs",
   "method",
@@ -71,11 +77,21 @@ export function validateCloudRequest(body) {
       throw new Error("Cloud inputs must reference fixed example layers.");
     if (n.data.component === "gridInput")
       throw new Error("Uploaded result grids run locally.");
+    if (n.data.component === "number") numberValue(p);
     if (p.size != null && (p.size < 30 || p.size > 1000))
       throw new Error("Cloud grid size must be 30–1000 m.");
     if (p.crs && p.crs !== "EPSG:32650")
       throw new Error("The Shatou cloud example uses EPSG:32650.");
     if (p.cellSize != null && p.cellSize < 30)
+      throw new Error("Cloud density cell size must be at least 30 m.");
+  }
+  for (const e of g.edges) {
+    const n = g.nodes.find((n) => n.id === e.source);
+    if (n?.data.component !== "number") continue;
+    const value = numberValue(n.data.params || {});
+    if (e.targetHandle === "size" && (value < 30 || value > 1000))
+      throw new Error("Cloud grid size must be 30–1000 m.");
+    if (e.targetHandle === "cellSize" && value < 30)
       throw new Error("Cloud density cell size must be at least 30 m.");
   }
   return { ...body, graph: g };

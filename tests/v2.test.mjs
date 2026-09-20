@@ -114,7 +114,7 @@ test("V2 project round-trip retains Float32 NaN and IDs", () => {
 });
 test("V2 Circuit enforces typed inputs and acyclic connections", () => {
   const g = defaultGraph();
-  assert.equal(validateGraph(g).length, 10);
+  assert.equal(validateGraph(g).length, g.nodes.length);
   assert.throws(() =>
     validateGraph({
       ...g,
