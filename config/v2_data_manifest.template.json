@@ -24,10 +24,15 @@
     }
   },
   "terrain": {
-    "source": "深圳DEM.tif",
-    "currentDataStatus": "rgba_grayscale_placeholder",
-    "currentUnit": "relative_intensity",
-    "verticalScale": 0.15,
+    "source": "SELECT_ON_THIS_COMPUTER/两个栅格数据/dem",
+    "sourceFormat": "ArcInfo Binary Grid",
+    "sourceCrs": "EPSG:4019",
+    "derivedFormat": "Float32 GeoTIFF/COG",
+    "derivedCrs": "EPSG:32650",
+    "currentDataStatus": "analytic_float32",
+    "currentUnit": "meters",
+    "verticalDatum": "unknown",
+    "verticalScale": 1.0,
     "buildingGroundRecovery": {
       "enabled": true,
       "method": "nearest_non_building_median",
@@ -36,9 +41,13 @@
     }
   },
   "lst": {
-    "source": "深圳LST.tif",
-    "currentDataStatus": "rgba_grayscale_placeholder",
-    "currentUnit": "relative_intensity",
+    "source": "SELECT_ON_THIS_COMPUTER/两个栅格数据/lst",
+    "sourceFormat": "ArcInfo Binary Grid",
+    "sourceCrs": "EPSG:3857_FROM_ROOT_AUX_XML",
+    "derivedFormat": "Float32 GeoTIFF/COG",
+    "derivedCrs": "EPSG:32650",
+    "currentDataStatus": "analytic_float32_unit_pending",
+    "currentUnit": "pending_confirmation",
     "colorRamp": "thermal",
     "showTemperatureUnit": false
   },
