@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "shatou-v2",
+    "nameZh": "沙头城市更新",
+    "nameEn": "Shatou Urban Regeneration",
+    "mode": "local-first",
+    "sourceRoot": "SELECT_ON_THIS_COMPUTER",
+    "analysisCrs": "AUTO_LOCAL_METRIC",
+    "rhinoUnits": "meters",
+    "rhinoOrigin": "BOUNDARY_CENTROID"
+  },
+  "grid": {
+    "cellSizeMeters": 30,
+    "allowedPresetsMeters": [10, 20, 30, 50],
+    "rasterStatistic": "mean",
+    "surfaceVertexMethod": "mean_adjacent_cells",
+    "maxCells": 50000,
+    "wireframe": {
+      "visible": true,
+      "color": "#6D7480",
+      "width": 0.6,
+      "opacity": 0.55
+    }
+  },
+  "terrain": {
+    "source": "深圳DEM.tif",
+    "currentDataStatus": "rgba_grayscale_placeholder",
+    "currentUnit": "relative_intensity",
+    "verticalScale": 0.15,
+    "buildingGroundRecovery": {
+      "enabled": true,
+      "method": "nearest_non_building_median",
+      "maxRadiusCells": 3,
+      "unresolvedPolicy": "mark_missing"
+    }
+  },
+  "lst": {
+    "source": "深圳LST.tif",
+    "currentDataStatus": "rgba_grayscale_placeholder",
+    "currentUnit": "relative_intensity",
+    "colorRamp": "thermal",
+    "showTemperatureUnit": false
+  },
+  "buildings": {
+    "source": "沙头建筑新.shp",
+    "encoding": "UTF-8",
+    "idField": "BLDG_NO",
+    "heightField": "BLDG_HEIGH",
+    "floorsField": "UP_BLDG_FL",
+    "usageField": "BLDG_USAGE",
+    "structureField": "BLDSTRU",
+    "conditionField": "BLDCOND"
+  },
+  "weather": {
+    "source": "CHN_GD_Shenzhen.594930_TMYx.2004-2018/CHN_GD_Shenzhen.594930_TMYx.2004-2018.epw",
+    "expectedHours": 8760,
+    "timezone": 8,
+    "stationLatitude": 22.639,
+    "stationLongitude": 113.811,
+    "stationElevationMeters": 4
+  },
+  "texture": {
+    "source": "SELECT_GEOREFERENCED_RGB_IMAGE",
+    "storageRole": "basemap_only",
+    "clipTo": "master_grid_extent",
+    "mapping": "shared_uv"
+  },
+  "rhinoExport": {
+    "fileName": "Shatou_V2.3dm",
+    "packageCompanionFiles": true,
+    "layers": [
+      "00_Metadata",
+      "01_Boundary",
+      "02_BaseMap",
+      "03_TerrainMesh",
+      "04_GridWireframe",
+      "05_Buildings",
+      "06_LST",
+      "07_Analysis",
+      "08_Annotations"
+    ]
+  }
+}

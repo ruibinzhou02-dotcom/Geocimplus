@@ -1,5 +1,7 @@
 # GeoCIM · 沙头分析 / Shatou analysis
 
+V2 已在 `codex/v2` 分支启动。地形网格、LST、EPW、Circuit 2.0、安全沙盒与 Rhino 分层导出的实施顺序和数据限制见 [V2 开发操作模板与交接](docs/V2开发操作模板与交接.md)。V2 开发期间生产站继续使用已验收的 V1。
+
 页面顶部支持中文 / English切换。OpenAI服务端接口与配置入口已实现，需用户自己的API Key才能测试真实连通性。操作步骤和独立计费、跨电脑部署说明见 [OpenAI接入与部署](docs/OpenAI接入与部署.md)。
 
 这是使用真实本地数据的 React + Vite + MapLibre GL JS 原型，Python/FastAPI 仅监听回环地址。运行时从 `config/data_catalog.json` 读取本地审计副本，不把真实数据编进前端或安装包。
