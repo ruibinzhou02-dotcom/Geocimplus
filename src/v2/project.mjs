@@ -1,3 +1,4 @@
+import { writeOutput } from "./local-files.mjs";
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 const TYPES = {
   Float32Array,
@@ -67,7 +68,7 @@ export function unpackProject(bytes) {
     throw new Error("Invalid GeoCIM V2 project.");
   for (const l of p.layers) {
     if (
-      !["raster", "vector", "epw"].includes(l.kind) ||
+      !["raster", "vector", "epw", "summary"].includes(l.kind) ||
       typeof l.id !== "string"
     )
       throw new Error("Invalid layer identity.");
@@ -113,16 +114,10 @@ export function unpackProject(bytes) {
   return p;
 }
 export function download(data, name, type = "application/octet-stream") {
-  const blob = data instanceof Blob ? data : new Blob([data], { type }),
-    url = URL.createObjectURL(blob),
-    a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  return writeOutput(data, name, type).catch(() => null);
 }
 export function jsonDownload(data, name) {
-  download(JSON.stringify(data, null, 2), name, "application/json");
+  return download(JSON.stringify(data, null, 2), name, "application/json");
 }
 async function database() {
   return new Promise((resolve, reject) => {

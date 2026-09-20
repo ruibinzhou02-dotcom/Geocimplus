@@ -20,9 +20,31 @@ import {
   localProjects,
 } from "./project.mjs";
 import { RAMPS } from "./terrain-mesh.mjs";
+import { sceneResultLayers } from "./scene-results.mjs";
+import {
+  ROOT_LAYERS,
+  bucketOf,
+  canEdit,
+  canAnalyze,
+  assertEditable,
+  copyToAnalysis,
+  updateLayer,
+  editAttribute,
+  demoWorkingLayers,
+  remapDemoGraph,
+} from "./layer-policy.mjs";
+import {
+  chooseDirectory,
+  inputFiles,
+  resetDirectories,
+} from "./local-files.mjs";
+import { cloudHealth, cloudRequest, cloudGraph } from "./cloud.mjs";
+import { prepareGeoJSON } from "../geojson.mjs";
+import ProjectIO from "./ProjectIO.jsx";
 import { normalizeLayer, categoryOf } from "./layers.mjs";
 import {
   LayerTree,
+  LayerManager,
   LayerStyle,
   UploadPanel,
   ConversionPanel,
@@ -51,6 +73,11 @@ const initialStyle = {
   imageryOpacity: 1,
 };
 function App() {
+  const [mode, setMode] = useState("local"),
+    [isDemo, setIsDemo] = useState(false),
+    [cloudReady, setCloudReady] = useState(false),
+    [io, setIO] = useState({ input: "", output: "" }),
+    [uploadBucket, setUploadBucket] = useState("analysis");
   const [selectedLayer, setSelectedLayer] = useState("");
   const [plugin, setPlugin] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("other");
@@ -94,8 +121,41 @@ function App() {
       .then(setRecent)
       .catch(() => {});
   }, [screen]);
+  useEffect(() => {
+    cloudHealth().then(setCloudReady);
+    const onOutput = (e) =>
+      e.detail.error
+        ? setError(e.detail.error)
+        : setNotice(t("Written to ", "已写入 ") + e.detail.text);
+    window.addEventListener("geocim-output", onOutput);
+    return () => window.removeEventListener("geocim-output", onOutput);
+  }, []);
+  const localize = () => {
+    if (mode === "cloud") {
+      setMode("local");
+      setNotice(
+        t(
+          "Switched to local analysis for your working data.",
+          "工作数据已切换为本地分析。",
+        ),
+      );
+    }
+  };
+  const selectMode = (value) => {
+    if (value === "cloud" && (!isDemo || !cloudReady)) {
+      setError(
+        t(
+          "Cloud analysis is available only for the fixed Shatou example.",
+          "云分析仅对固定沙头示例开放。",
+        ),
+      );
+      return;
+    }
+    setMode(value);
+  };
   const changeStyle = (p) => setStyle((s) => ({ ...s, ...p }));
   const guard = async (fn) => {
+    if (busy) return;
     setError("");
     setBusy(true);
     try {
@@ -108,7 +168,41 @@ function App() {
     }
   };
   const construct = async (ls, options = {}) => {
-    let dem = ls.find((l) => l.kind === "raster" && l.role === "dem"),
+    if ((options.mode ?? mode) === "cloud") {
+      setNotice(
+        t(
+          "Computing the fixed example on the server…",
+          "正在服务器计算固定示例…",
+        ),
+      );
+      const g = remapDemoGraph(defaultGraph(), ls);
+      for (const n of g.nodes) {
+        if (n.data.component === "grid")
+          n.data.params = { ...n.data.params, size: options.size ?? size };
+        if (n.data.component === "ground")
+          n.data.params = {
+            ...n.data.params,
+            enabled: options.ground ?? ground,
+          };
+      }
+      const r = await cloudRequest({ action: "run", graph: cloudGraph(g, ls) });
+      await finishModel(r.scene, ls);
+      setNotice(
+        t(
+          `Cloud result received · ${(r.execution.durationMs / 1000).toFixed(1)} s · no result stored on server`,
+          `云端结果已返回 · ${(r.execution.durationMs / 1000).toFixed(1)} 秒 · 服务器不保存结果`,
+        ),
+      );
+      return;
+    }
+    let dem =
+        ls.find(
+          (l) =>
+            l.kind === "raster" &&
+            l.role === "dem" &&
+            canEdit(l) &&
+            l.visible !== false,
+        ) || ls.find((l) => l.kind === "raster" && l.role === "dem"),
       lst = ls.find((l) => l.kind === "raster" && l.role === "lst");
     if (!dem) {
       const base = lst || ls.find((l) => l.kind === "raster");
@@ -186,7 +280,9 @@ function App() {
       g = await job("ground", {
         grid: g,
         features: ls
-          .filter((l) => l.heightField)
+          .filter(
+            (l) => l.heightField && (!l.sourceDisplayId || l.visible !== false),
+          )
           .flatMap((l) => l.data.features),
       });
     }
@@ -213,10 +309,22 @@ function App() {
       );
   };
   const finishModel = async (scene, ls) => {
+    const next = sceneResultLayers(scene, ls);
+    if (next.length > 24)
+      throw new Error(
+        "Project limit: 24 layers. Remove a working/result layer before publishing more outputs.",
+      );
+    setLayers(next);
     const terrain = terrainMesh(scene.grid),
       buildings = buildingModels(
         scene.buildingIds
-          ? ls.filter((l) => scene.buildingIds.includes(l.id))
+          ? ls.filter((l) =>
+              scene.buildingIds.some(
+                (id) =>
+                  id === l.id ||
+                  ls.find((x) => x.id === id)?.sourceDisplayId === l.id,
+              ),
+            )
           : ls,
         scene.grid,
         terrain,
@@ -247,7 +355,7 @@ function App() {
   const demo = () =>
     guard(async () => {
       setNotice(
-        t("Reading the local Shatou example…", "正在读取本地沙头示例…"),
+        t("Reading the fixed Shatou example…", "正在读取固定沙头示例…"),
       );
       const r = await fetch("/v2-data/catalog.json");
       if (!r.ok)
@@ -274,15 +382,26 @@ function App() {
           });
         else ls.push({ ...meta, data: await f.json() });
       }
+      const prepared = demoWorkingLayers(ls);
+      ls.splice(0, ls.length, ...prepared);
+      setIsDemo(true);
+      setMode("cloud");
+      resetDirectories();
+      setIO({ input: "", output: "" });
       setName(t("Shatou · Urban Regeneration", "沙头 · 城市更新"));
       setId(crypto.randomUUID());
       setLayers(ls);
-      setGraph(defaultGraph());
+      setGraph(remapDemoGraph(defaultGraph(), ls));
       setScreen("workspace");
       setStyle(initialStyle);
-      await construct(ls, { size: 30, ground: true });
+      await construct(ls, { size: 30, ground: true, mode: "cloud" });
     });
   const newProject = () => {
+    setMode("local");
+    setIsDemo(false);
+    resetDirectories();
+    setIO({ input: "", output: "" });
+    setTab("upload");
     setName(t("Untitled project", "未命名项目"));
     setId(crypto.randomUUID());
     setLayers([]);
@@ -299,6 +418,7 @@ function App() {
   };
   const importData = (files) =>
     guard(async () => {
+      localize();
       if (
         files.length > 512 ||
         files.reduce((n, f) => n + f.size, 0) > 128 * 1024 * 1024
@@ -346,15 +466,21 @@ function App() {
         normalizeLayer({
           ...l,
           category: l.kind === "epw" ? undefined : uploadCategory,
+          bucket: uploadBucket,
+          cloudSource: null,
         }),
       );
       const all = [...layers, ...ls];
       if (all.length > 24) throw new Error("Project limit: 24 layers.");
       setLayers(all);
       setScreen("workspace");
-      await construct(all);
+      await construct(all, { mode: "local" });
     });
   const restore = async (p) => {
+    setIsDemo(!!p.isDemo);
+    setMode(p.isDemo && p.mode === "cloud" ? "cloud" : "local");
+    resetDirectories();
+    setIO({ input: "", output: "" });
     p.graph = migrateGraph(p.graph);
     validateGraph(p.graph);
     setId(p.id);
@@ -368,7 +494,12 @@ function App() {
     setScreen("workspace");
     setTable(false);
     if (p.scene) await finishModel(p.scene, p.layers);
-    else await construct(p.layers, { size: p.size || 30, ground: !!p.ground });
+    else
+      await construct(p.layers, {
+        size: p.size || 30,
+        ground: !!p.ground,
+        mode: p.isDemo && p.mode === "cloud" ? "cloud" : "local",
+      });
     setStyle({ ...initialStyle, ...p.style });
   };
   const save = () =>
@@ -376,6 +507,9 @@ function App() {
       const bytes = packProject({
         id,
         name,
+        mode,
+        isDemo,
+        ioNames: io,
         layers,
         graph,
         style,
@@ -396,11 +530,14 @@ function App() {
         saved: new Date().toISOString(),
         bytes,
       });
-      download(bytes, `${name.replace(/[\\/:*?"<>|]/g, "_")}.geocim`);
+      if (
+        !(await download(bytes, `${name.replace(/[\\/:*?"<>|]/g, "_")}.geocim`))
+      )
+        return;
       setNotice(
         t(
-          "Saved on this browser and downloaded as a portable project.",
-          "已保存到此浏览器，并下载可迁移项目包。",
+          "Saved in this browser and exported to your output location.",
+          "已保存到此浏览器，并导出到输出位置。",
         ),
       );
     });
@@ -408,14 +545,41 @@ function App() {
     guard(async () => {
       setNodeStatus({});
       setResult(null);
-      const scene = await evaluateGraph(graph, layers, (id, status) => {
+      const onStep = (id, status) => {
         setNodeStatus((s) => ({ ...s, [id]: status }));
         setNotice(
           `${status === "running" ? "▶" : "✓"} ${graph.nodes.find((n) => n.id === id)?.data.component}`,
         );
-      });
+      };
+      let scene;
+      if (mode === "cloud") {
+        setNotice(
+          t("Running Circuit on the server…", "正在服务器运行 Circuit…"),
+        );
+        const r = await cloudRequest({
+          action: "run",
+          graph: cloudGraph(graph, layers),
+        });
+        scene = r.scene || { result: r.result };
+        setNodeStatus(
+          Object.fromEntries(graph.nodes.map((n) => [n.id, "done"])),
+        );
+      } else scene = await evaluateGraph(graph, layers, onStep);
       if (scene.result) {
         if (scene.result.kind === "summary") {
+          const summaryLayer = {
+            id: crypto.randomUUID(),
+            name: t("Statistics result", "统计结果"),
+            kind: "summary",
+            bucket: "results",
+            category: "analysis",
+            data: scene.result,
+            visible: true,
+          };
+          if (layers.length >= 24) throw new Error("Project limit: 24 layers.");
+          setLayers((ls) => [...ls, summaryLayer]);
+          setSelectedLayer(summaryLayer.id);
+          setTab("layers");
           setResult(scene.result);
           setNotice(
             t(
@@ -427,6 +591,7 @@ function App() {
           const output = normalizeLayer({
             ...scene.result,
             category: "analysis",
+            bucket: "results",
             visible: true,
             heightField: "",
             symbology: scene.result.density
@@ -438,11 +603,17 @@ function App() {
                 }
               : undefined,
           });
-          const all = [...layers.filter((l) => l.id !== output.id), output];
+          const all = [
+            ...layers.filter(
+              (l) => l.id !== output.id || bucketOf(l) === "display",
+            ),
+            output,
+          ];
           if (all.length > 24) throw new Error("Project limit: 24 layers.");
           setLayers(all);
           setSelectedLayer(output.id);
-          await construct(all);
+          if (model) setModel((m) => ({ ...m }));
+          else await construct(all, { mode: "local" });
         }
       } else await finishModel(scene, layers);
     });
@@ -456,7 +627,7 @@ function App() {
         ),
       );
       const r = await job("rhino", { model, layers, style });
-      download(r.zip, "GeoCIM-Rhino.zip");
+      if (!(await download(r.zip, "GeoCIM-Rhino.zip"))) return;
       setNotice(
         t(
           `Rhino ZIP exported · ${r.meta.verified.objects} objects, ${r.meta.verified.layers} layers; elevations at true scale.`,
@@ -464,15 +635,16 @@ function App() {
         ),
       );
     });
-  const png = () => {
-    const image = sceneAPI.current?.png();
-    if (image) {
-      const a = document.createElement("a");
-      a.href = image;
-      a.download = "GeoCIM-scene.png";
-      a.click();
-    }
-  };
+  const png = () =>
+    guard(async () => {
+      const image = sceneAPI.current?.png();
+      if (image)
+        await download(
+          await (await fetch(image)).blob(),
+          "GeoCIM-scene.png",
+          "image/png",
+        );
+    });
   const tableOpen = (l) => {
     setTableLayer(l || "grid");
     setTable(true);
@@ -484,7 +656,7 @@ function App() {
     let reply;
     if (/density|核密度/i.test(text)) {
       const l = layers.find(
-        (l) => l.kind === "vector" && l.data.features.length,
+        (l) => l.kind === "vector" && canAnalyze(l) && l.data.features.length,
       );
       if (l) {
         setGraph(analysisGraph(l, "kde"));
@@ -578,7 +750,11 @@ function App() {
   };
   const convertRaster = (source, options) =>
     guard(async () => {
-      setNotice(t("Resampling raster locally…", "正在本地转换栅格…"));
+      setNotice(
+        mode === "cloud"
+          ? t("Resampling on the server…", "正在服务器转换栅格…")
+          : t("Resampling locally…", "正在本地转换栅格…"),
+      );
       const ll = transform(
         source.crs,
         "EPSG:4326",
@@ -587,12 +763,26 @@ function App() {
         (source.extent[1] + source.extent[3]) / 2,
       ]);
       if (layers.length >= 24) throw new Error("Project limit: 24 layers.");
-      const g = await job("grid", {
-        raster: source,
-        size: options.size,
-        crs: metricCRS(...ll),
-        method: options.method,
-      });
+      if (!canAnalyze(source))
+        throw new Error(
+          "Copy the display raster to Analysis before conversion.",
+        );
+      const g =
+        mode === "cloud"
+          ? (
+              await cloudRequest({
+                action: "grid",
+                source: source.cloudSource,
+                size: options.size,
+                method: options.method,
+              })
+            ).convertedGrid
+          : await job("grid", {
+              raster: source,
+              size: options.size,
+              crs: metricCRS(...ll),
+              method: options.method,
+            });
       if (stats(g.mean).count > 100000)
         throw new Error(
           "Increase cell size to keep the fishnet below 100,000 features.",
@@ -607,6 +797,7 @@ function App() {
           options.name.trim() || `${source.name} · ${options.size}m fishnet`,
         kind: "vector",
         category: "analysis",
+        bucket: "results",
         visible: true,
         heightField: "",
         data: gridGeoJSON(g),
@@ -626,11 +817,11 @@ function App() {
       setLayers(all);
       setSelectedLayer(l.id);
       setTab("layers");
-      if (!model) await construct(all);
+      if (!model) await construct(all, { mode: "local" });
       setNotice(
         t(
-          `Created ${l.data.features.length.toLocaleString()} fishnet polygons in Analysis.`,
-          `已在分析主图层中生成 ${l.data.features.length.toLocaleString()} 个渔网面。`,
+          `Created ${l.data.features.length.toLocaleString()} fishnet polygons in Results.`,
+          `已在结果主图层中生成 ${l.data.features.length.toLocaleString()} 个渔网面。`,
         ),
       );
     });
@@ -642,6 +833,85 @@ function App() {
     layers.find((l) => l.id === selectedLayer && l.kind !== "epw") ||
     layers.find((l) => l.kind !== "epw");
   const st = model?.lst ? stats(model.lst.mean) : null;
+  const chooseFolder = (which) =>
+    guard(async () => {
+      try {
+        const name = await chooseDirectory(which);
+        setIO((v) => ({ ...v, [which]: name }));
+      } catch (e) {
+        if (e.name !== "AbortError") throw e;
+      }
+    });
+  const copyLayer = (l) =>
+    guard(async () => {
+      if (layers.length >= 24) throw new Error("Project limit: 24 layers.");
+      const copy = normalizeLayer(copyToAnalysis(l));
+      setLayers((ls) => [...ls, copy]);
+      setSelectedLayer(copy.id);
+      setTab("upload");
+      setNotice(
+        t(
+          "Independent working copy added to Analysis.",
+          "独立工作副本已加入分析图层。",
+        ),
+      );
+    });
+  const changeLayer = (patch) => {
+    if (busy) return;
+    try {
+      const next = updateLayer(activeLayer, patch);
+      setLayers((ls) => ls.map((l) => (l.id === next.id ? next : l)));
+      if (next.modified) localize();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const replaceEdited = async (next) => {
+    localize();
+    const ls = layers.map((l) =>
+      l.id === next.id
+        ? next
+        : next.sourceDisplayId === l.id
+          ? { ...l, visible: false }
+          : l,
+    );
+    setLayers(ls);
+    await construct(ls, { mode: "local" });
+  };
+  const changeAttribute = (layerId, ids, field, value, type) =>
+    guard(async () => {
+      const l = layers.find((l) => l.id === layerId);
+      await replaceEdited(editAttribute(l, ids, field, value, type));
+    });
+  const changeGeometry = async (l, text) => {
+    let ok = false;
+    await guard(async () => {
+      assertEditable(l);
+      if (text.length > 8 * 1024 * 1024)
+        throw new Error("GeoJSON editor accepts up to 8 MiB.");
+      const parsed = JSON.parse(text);
+      const validated = prepareGeoJSON(parsed, l.name, l.id);
+      await replaceEdited({
+        ...l,
+        data: validated.data,
+        gridData: undefined,
+        cloudSource: null,
+        modified: true,
+        visible: true,
+      });
+      ok = true;
+    });
+    return ok;
+  };
+  const removeLayer = () =>
+    guard(async () => {
+      assertEditable(activeLayer);
+      localize();
+      const ls = layers.filter((l) => l.id !== activeLayer.id);
+      setLayers(ls);
+      if (activeLayer.kind !== "summary")
+        await construct(ls, { mode: "local" });
+    });
   const chooser = (
     <>
       <input
@@ -767,7 +1037,7 @@ function App() {
                   <span className="v2-card-number">{num}</span>
                   <span className="v2-card-badge">
                     {kind === "shatou"
-                      ? t("LOCAL EXAMPLE", "本地示例")
+                      ? t("CLOUD EXAMPLE", "云端示例")
                       : t("COMING LATER", "后续开发")}
                   </span>
                 </div>
@@ -846,7 +1116,11 @@ function App() {
     <div className="v2-app v2-workspace">
       {chooser}
       <header className="v2-header">
-        <button className="v2-logo" onClick={() => setScreen("home")}>
+        <button
+          className="v2-logo"
+          disabled={busy}
+          onClick={() => setScreen("home")}
+        >
           ◈{" "}
           <b>
             GeoCIM<span>+</span>
@@ -859,7 +1133,18 @@ function App() {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <span className="v2-local-dot">● {t("Local", "本地")}</span>
+        <select
+          disabled={busy}
+          aria-label="Analysis mode"
+          className="v2-mode"
+          value={mode}
+          onChange={(e) => selectMode(e.target.value)}
+        >
+          <option value="local">{t("Local analysis", "本地分析")}</option>
+          <option value="cloud" disabled={!isDemo || !cloudReady}>
+            {t("Cloud analysis", "云分析")}
+          </option>
+        </select>
         <nav>
           <button
             onClick={() => {
@@ -1017,6 +1302,7 @@ function App() {
           </div>
           {table && (
             <Attributes
+              onEdit={changeAttribute}
               onSelection={(layer, ids) => setMapSelection({ layer, ids })}
               key={tableLayer}
               initial={tableLayer}
@@ -1033,7 +1319,7 @@ function App() {
           <div className="v2-tabs">
             {[
               ["style", "Scene", "场景"],
-              ["layers", "Layers", "图层"],
+              ["layers", "Symbology", "符号系统"],
               ["analysis", "Analysis", "分析"],
               ["upload", "Upload", "上传"],
             ].map(([id, en, zh]) => (
@@ -1052,7 +1338,7 @@ function App() {
                 <span className="eyebrow">TERRAIN / SANDBOX</span>
                 <h2>{t("Shape the scene", "构建场景")}</h2>
                 <ConversionPanel
-                  layers={layers}
+                  layers={layers.filter(canAnalyze)}
                   onConvert={convertRaster}
                   busy={busy}
                   t={t}
@@ -1105,7 +1391,9 @@ function App() {
                   disabled={busy || !layers.length}
                   onClick={() => guard(() => construct(layers))}
                 >
-                  {t("Rebuild local scene", "重新构建本地场景")}
+                  {mode === "cloud"
+                    ? t("Rebuild cloud scene", "重新构建云端场景")
+                    : t("Rebuild local scene", "重新构建本地场景")}
                 </button>
                 <hr />
                 <h3>{t("Display layers", "显示图层")}</h3>
@@ -1219,35 +1507,48 @@ function App() {
                 layer={activeLayer}
                 t={t}
                 onTable={tableOpen}
-                onChange={(p) =>
-                  setLayers((ls) =>
-                    ls.map((l) =>
-                      l.id === activeLayer.id ? { ...l, ...p } : l,
-                    ),
-                  )
-                }
-                onRemove={() =>
-                  guard(async () => {
-                    const ls = layers.filter((l) => l.id !== activeLayer.id);
-                    setLayers(ls);
-                    await construct(ls);
-                  })
-                }
+                onChange={changeLayer}
               />
             )}
             {tab === "upload" && (
-              <UploadPanel
-                category={uploadCategory}
-                setCategory={setUploadCategory}
-                role={uploadRole}
-                setRole={setUploadRole}
-                unit={uploadUnit}
-                setUnit={setUploadUnit}
-                onUpload={() => fileInput.current.click()}
-                busy={busy}
-                layers={layers}
-                t={t}
-              />
+              <fieldset className="v2-edit-block" disabled={busy}>
+                <ProjectIO
+                  mode={mode}
+                  setMode={selectMode}
+                  isDemo={isDemo}
+                  ready={cloudReady}
+                  io={io}
+                  onChoose={chooseFolder}
+                  onRead={() =>
+                    guard(async () => importData(await inputFiles()))
+                  }
+                  t={t}
+                />
+                <UploadPanel
+                  category={uploadCategory}
+                  setCategory={setUploadCategory}
+                  bucket={uploadBucket}
+                  setBucket={setUploadBucket}
+                  role={uploadRole}
+                  setRole={setUploadRole}
+                  unit={uploadUnit}
+                  setUnit={setUploadUnit}
+                  onUpload={() => fileInput.current.click()}
+                  busy={busy}
+                  layers={layers}
+                  t={t}
+                />
+                <LayerManager
+                  layer={activeLayer}
+                  layers={layers}
+                  onSelect={setSelectedLayer}
+                  onChange={changeLayer}
+                  onCopy={copyLayer}
+                  onRemove={removeLayer}
+                  onGeometry={changeGeometry}
+                  t={t}
+                />
+              </fieldset>
             )}
             {tab === "analysis" && (
               <div className="v2-chat-panel">
@@ -1403,10 +1704,11 @@ function App() {
       {circuit && (
         <Suspense fallback={<div className="v2-notice">Loading Circuit…</div>}>
           <Circuit
+            mode={mode}
             onDockHeight={setDockHeight}
             graph={graph}
             setGraph={setGraph}
-            layers={layers}
+            layers={layers.filter(canAnalyze)}
             onRun={runCircuit}
             busy={busy}
             preferredLayer={selectedLayer}

@@ -1,3 +1,4 @@
+import { canAnalyze } from "./layer-policy.mjs";
 import { job } from "./jobs.mjs";
 import { runJob } from "../jobs.mjs";
 import { metricCRS, transform } from "./geo.mjs";
@@ -47,7 +48,7 @@ export const COMPONENTS = {
   },
   publish: {
     group: "Output",
-    label: "Analysis layer",
+    label: "Result layer",
     inputs: { features: "vector" },
     out: "result",
   },
@@ -168,6 +169,8 @@ export function acceptsPort(out, input) {
   return out === t || (t === "vector" && ["points", "polygons"].includes(out));
 }
 export function validateInputLayer(component, layer) {
+  if (layer && !canAnalyze(layer))
+    throw new Error("Copy display data to Analysis before connecting it.");
   if (!layer) throw new Error("Select a loaded input layer.");
   const expected =
     {
@@ -332,7 +335,7 @@ export async function evaluateGraph(
   );
   if (outputs.length !== 1)
     throw new Error(
-      "Use exactly one output: Scene preview, Analysis layer or Statistics report.",
+      "Use exactly one output: Scene preview, Result layer or Statistics report.",
     );
   const needed = new Set([outputs[0].id]);
   let changed = true;

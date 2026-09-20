@@ -252,3 +252,102 @@
 .v2-battery.error {
   outline: 2px solid #bc626d;
 }
+.v2-layer-subgroup {
+  margin: 4px 0 6px 12px;
+  border-left: 1px solid #e5ddec;
+  padding-left: 5px;
+}
+.v2-layer-subgroup > summary {
+  font-size: 11px;
+  color: #7b6a8b;
+  padding: 5px;
+  cursor: pointer;
+}
+.v2-project-io,
+.v2-layer-manager {
+  border: 1px solid #e6dfee;
+  border-radius: 12px;
+  background: #fbf9fd;
+  padding: 13px;
+  margin: 0 0 18px;
+}
+.v2-layer-manager {
+  margin-top: 24px;
+}
+.v2-project-io p,
+.v2-project-io small,
+.v2-layer-manager small {
+  font-size: 11px;
+  line-height: 1.6;
+  display: block;
+}
+.v2-project-io dl,
+.v2-stat-report {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  font-size: 11px;
+}
+.v2-project-io dd,
+.v2-stat-report dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.v2-project-io dt,
+.v2-stat-report dt {
+  color: #857391;
+}
+.v2-io-buttons {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.v2-io-buttons button {
+  flex: 1;
+  padding: 7px 4px;
+  font-size: 10px;
+}
+.v2-mode {
+  max-width: 132px;
+  background: #f5eff9;
+  border: 1px solid #e1d7eb;
+  border-radius: 7px;
+  padding: 7px;
+  color: #765793;
+  font-size: 11px;
+}
+.v2-layer-manager textarea {
+  min-height: 200px;
+  font: 11px/1.5 monospace;
+  width: 100%;
+  box-sizing: border-box;
+}
+.v2-layer-manager button {
+  margin: 5px 0;
+}
+.v2-tabs button {
+  font-size: 11px;
+  padding: 12px 4px;
+}
+.v2-attribute-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #faf7fd;
+  border-bottom: 1px solid #e8e1ef;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.v2-attribute-editor input {
+  min-width: 80px;
+  max-width: 180px;
+}
+
+.v2-edit-block {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

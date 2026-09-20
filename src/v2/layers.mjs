@@ -1,3 +1,4 @@
+import { bucketOf } from "./layer-policy.mjs";
 import { colorAt } from "./terrain-mesh.mjs";
 export const CATEGORIES = [
   ["buildings", "Buildings", "建筑", "▥"],
@@ -5,7 +6,7 @@ export const CATEGORIES = [
   ["basemap", "Base maps", "底图", "▧"],
   ["terrain", "Terrain", "地形", "▱"],
   ["transport", "Transport", "交通", "╱"],
-  ["analysis", "Analysis", "分析", "▦"],
+  ["analysis", "Thematic data", "专题数据", "▦"],
   ["other", "Other data", "其他数据", "◇"],
 ];
 export function categoryOf(l) {
@@ -17,17 +18,23 @@ export function categoryOf(l) {
   if (l.role === "lst" || l.analysis || l.gridData) return "analysis";
   return "other";
 }
-export const normalizeLayer = (l) => ({ ...l, category: categoryOf(l) });
+export const normalizeLayer = (l) => ({
+  ...l,
+  category: categoryOf(l),
+  bucket: bucketOf(l),
+});
 export const layerIcon = (l) =>
-  l.gridData
-    ? "▦"
-    : l.kind === "raster"
-      ? "▧"
-      : /Point/.test(l.data?.features?.[0]?.geometry?.type)
-        ? "•"
-        : /Line/.test(l.data?.features?.[0]?.geometry?.type)
-          ? "╱"
-          : "⬡";
+  l.kind === "summary"
+    ? "▤"
+    : l.gridData
+      ? "▦"
+      : l.kind === "raster"
+        ? "▧"
+        : /Point/.test(l.data?.features?.[0]?.geometry?.type)
+          ? "•"
+          : /Line/.test(l.data?.features?.[0]?.geometry?.type)
+            ? "╱"
+            : "⬡";
 export const numeric = (v) =>
   v === null ||
   v === undefined ||

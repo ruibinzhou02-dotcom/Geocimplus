@@ -7,6 +7,8 @@ import {
   classifyLayer,
   colorCSS,
 } from "./layers.mjs";
+import { ROOT_LAYERS, bucketOf, canEdit } from "./layer-policy.mjs";
+import { jsonDownload } from "./project.mjs";
 import { RAMPS } from "./terrain-mesh.mjs";
 export function LayerTree({
   layers,
@@ -16,28 +18,62 @@ export function LayerTree({
   onTable,
   t,
 }) {
+  const leaf = (l) => (
+    <div
+      className={"v2-tree-child " + (selected === l.id ? "selected" : "")}
+      key={l.id}
+    >
+      <input
+        type="checkbox"
+        aria-label={"Toggle " + l.name}
+        checked={l.visible !== false}
+        onChange={(e) =>
+          setLayers((ls) =>
+            ls.map((x) =>
+              x.id === l.id ? { ...x, visible: e.target.checked } : x,
+            ),
+          )
+        }
+      />
+      <button title={l.name} onClick={() => onSelect(l.id)}>
+        <span>{layerIcon(l)}</span> {l.name}
+      </button>
+      {!canEdit(l) && <span title={t("Read-only data", "数据只读")}>▣</span>}
+      {l.kind === "vector" && (
+        <button
+          aria-label={"Attributes " + l.name}
+          title={t("Attributes", "属性表")}
+          onClick={() => onTable(l.id)}
+        >
+          ▤
+        </button>
+      )}
+    </div>
+  );
   return (
     <>
-      {CATEGORIES.map(([id, en, zh, icon]) => {
+      {ROOT_LAYERS.map(([root, en, zh, icon]) => {
         const children = layers.filter(
-          (l) => l.kind !== "epw" && categoryOf(l) === id,
-        );
+            (l) => l.kind !== "epw" && bucketOf(l) === root,
+          ),
+          visible = children.filter((l) => l.visible !== false).length;
         return (
-          <details className="v2-layer-group" open key={id}>
+          <details className="v2-layer-group" open key={root}>
             <summary>
               <input
                 type="checkbox"
                 aria-label={`Toggle group ${en}`}
-                checked={
-                  !!children.length &&
-                  children.every((l) => l.visible !== false)
-                }
+                checked={!!children.length && visible === children.length}
+                ref={(el) => {
+                  if (el)
+                    el.indeterminate = visible > 0 && visible < children.length;
+                }}
                 disabled={!children.length}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) =>
                   setLayers((ls) =>
                     ls.map((l) =>
-                      categoryOf(l) === id
+                      bucketOf(l) === root
                         ? { ...l, visible: e.target.checked }
                         : l,
                     ),
@@ -49,39 +85,28 @@ export function LayerTree({
               </span>
               <small>{children.length}</small>
             </summary>
-            {children.map((l) => (
-              <div
-                className={
-                  "v2-tree-child " + (selected === l.id ? "selected" : "")
-                }
-                key={l.id}
-              >
-                <input
-                  type="checkbox"
-                  aria-label={"Toggle " + l.name}
-                  checked={l.visible !== false}
-                  onChange={(e) =>
-                    setLayers((ls) =>
-                      ls.map((x) =>
-                        x.id === l.id ? { ...x, visible: e.target.checked } : x,
-                      ),
-                    )
-                  }
-                />
-                <button title={l.name} onClick={() => onSelect(l.id)}>
-                  <span>{layerIcon(l)}</span> {l.name}
-                </button>
-                {l.kind === "vector" && (
-                  <button
-                    title={t("Attribute table", "属性表")}
-                    aria-label={"Attributes " + l.name}
-                    onClick={() => onTable(l.id)}
-                  >
-                    ▤
-                  </button>
+            {root === "display" ? (
+              CATEGORIES.map(([id, en, zh]) => {
+                const sub = children.filter((l) => categoryOf(l) === id);
+                return sub.length ? (
+                  <details className="v2-layer-subgroup" open key={id}>
+                    <summary>
+                      {t(en, zh)} <small>{sub.length}</small>
+                    </summary>
+                    {sub.map(leaf)}
+                  </details>
+                ) : null;
+              })
+            ) : (
+              <div>
+                {root === "analysis" && children.length > 0 && (
+                  <small className="v2-tree-empty">
+                    {t("Source / working data", "原始 / 工作数据")}
+                  </small>
                 )}
+                {children.map(leaf)}
               </div>
-            ))}
+            )}
             {!children.length && (
               <small className="v2-tree-empty">
                 {t("No layers", "暂无图层")}
@@ -103,6 +128,28 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
         )}
       </p>
     );
+  if (l.kind === "summary")
+    return (
+      <div className="v2-layer-style">
+        <h2>{l.name}</h2>
+        <span className="v2-chip">{t("Result report", "结果报告")}</span>
+        <dl className="v2-stat-report">
+          {Object.entries(l.data.values || {}).map(([k, v]) => (
+            <React.Fragment key={k}>
+              <dt>{k}</dt>
+              <dd>
+                {typeof v === "number"
+                  ? Number(v.toFixed(4))
+                  : String(v ?? "—")}
+              </dd>
+            </React.Fragment>
+          ))}
+        </dl>
+        <button onClick={() => jsonDownload(l.data, `${l.name}.json`)}>
+          {t("Export report", "导出报告")}
+        </button>
+      </div>
+    );
   const s = l.symbology || {},
     fields = fieldNames(l),
     set = (p) => onChange({ symbology: { ...s, ...p } }),
@@ -110,19 +157,12 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
   return (
     <div className="v2-layer-style">
       <h2>{l.name}</h2>
-      <label>
-        {t("Parent layer", "主图层")}
-        <select
-          value={categoryOf(l)}
-          onChange={(e) => onChange({ category: e.target.value })}
-        >
-          {CATEGORIES.map(([id, en, zh]) => (
-            <option value={id} key={id}>
-              {t(en, zh)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <span className="v2-chip">
+        {t(...ROOT_LAYERS.find(([id]) => id === bucketOf(l)).slice(1, 3))} ·{" "}
+        {canEdit(l)
+          ? t("Working data", "工作数据")
+          : t("Read-only data", "只读数据")}
+      </span>
       <small>
         {l.crs || "EPSG:4326"} ·{" "}
         {l.kind === "raster"
@@ -237,77 +277,26 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
           </div>
         ))}
       </div>
-      {l.kind === "raster" && (
-        <>
-          <h3>{t("Raster role", "栅格角色")}</h3>
-          <select
-            aria-label="Raster role"
-            value={l.role || "data"}
-            onChange={(e) => onChange({ role: e.target.value })}
-          >
-            <option value="data">{t("Data only", "仅数据")}</option>
-            <option value="dem">{t("Elevation", "高程")}</option>
-            <option value="lst">{t("Analysis / LST", "分析 / LST")}</option>
-            <option value="imagery">{t("Base imagery", "底图")}</option>
-          </select>
-          <label>
-            {t("Unit", "单位")}
-            <input
-              value={l.unit || ""}
-              onChange={(e) => onChange({ unit: e.target.value })}
-            />
-          </label>
-          <small>
-            {t(
-              "Role changes apply when the scene is rebuilt. Numeric raster colours appear on the scene grid; convert other rasters in Scene.",
-              "调整角色后重新构建场景。数值栅格在场景网格上着色；其他栅格请在场景页转换。",
-            )}
-          </small>
-        </>
-      )}
       {l.kind === "vector" && (
-        <>
-          <button onClick={() => onTable(l.id)}>
-            {t("Open attribute table", "打开属性表")}
-          </button>
-          <details>
-            <summary>
-              {t("Building height · metres", "建筑离地高度 · 米")}
-            </summary>
-            <select
-              value={l.heightField || ""}
-              onChange={(e) => onChange({ heightField: e.target.value })}
-            >
-              <option value="">{t("No extrusion", "不拉伸")}</option>
-              {fields.map((f) => (
-                <option key={f}>{f}</option>
-              ))}
-            </select>
-            <small>
-              {t(
-                "Confirm the field and rebuild the scene.",
-                "确认字段后重新构建场景。",
-              )}
-            </small>
-          </details>
-        </>
+        <button onClick={() => onTable(l.id)}>
+          {t("Open attribute table", "打开属性表")}
+        </button>
       )}
-      {l.gridData && (
-        <small>
-          {l.gridData.size} m · {l.gridData.crs}
-          <br />
-          {l.gridData.method}
-        </small>
-      )}
-      <button className="v2-wide" onClick={onRemove}>
-        {t("Remove layer", "移除图层")}
-      </button>
+      <small>
+        {t(
+          "Change parent layers and data settings in Upload.",
+          "所属母图层与数据设置在上传页管理。",
+        )}
+      </small>
     </div>
   );
 }
+
 export function UploadPanel({
   category,
   setCategory,
+  bucket,
+  setBucket,
   role,
   setRole,
   unit,
@@ -323,12 +312,26 @@ export function UploadPanel({
       <h2>{t("Upload", "上传")}</h2>
       <p>
         {t(
-          "Choose a parent layer, then add files from your computer.",
-          "先选择主图层，再添加电脑中的文件。",
+          "Choose Analysis, Display or Results, then add files. Display data becomes read-only.",
+          "先选择分析、展示或结果母图层，再添加文件。展示数据导入后只读。",
         )}
       </p>
       <label>
-        {t("Parent layer", "主图层")}
+        {t("Parent layer", "母图层")}
+        <select
+          aria-label="Upload parent"
+          value={bucket}
+          onChange={(e) => setBucket(e.target.value)}
+        >
+          {ROOT_LAYERS.map(([id, en, zh]) => (
+            <option key={id} value={id}>
+              {t(en, zh)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {t("Data category", "数据类别")}
         <select
           aria-label="Upload category"
           value={category}
@@ -461,7 +464,7 @@ export function ConversionPanel({ layers, onConvert, busy, t }) {
         disabled={busy || !source}
         onClick={() => onConvert(source, { method, size, name })}
       >
-        {t("Create analysis layer", "生成分析子图层")}
+        {t("Create result layer", "生成结果子图层")}
       </button>
       <small>
         {t(
@@ -470,5 +473,168 @@ export function ConversionPanel({ layers, onConvert, busy, t }) {
         )}
       </small>
     </details>
+  );
+}
+
+export function LayerManager({
+  layer: l,
+  layers,
+  onSelect,
+  onChange,
+  onCopy,
+  onRemove,
+  onGeometry,
+  t,
+}) {
+  const [text, setText] = useState(""),
+    [editing, setEditing] = useState(false);
+  if (!l) return null;
+  const editable = canEdit(l);
+  return (
+    <div className="v2-layer-manager">
+      <h3>{t("Manage imported layers", "管理已导入图层")}</h3>
+      <select
+        aria-label="Managed layer"
+        value={l.id}
+        onChange={(e) => {
+          onSelect(e.target.value);
+          setEditing(false);
+        }}
+      >
+        {layers
+          .filter((x) => x.kind !== "epw")
+          .map((x) => (
+            <option value={x.id} key={x.id}>
+              {x.name}
+            </option>
+          ))}
+      </select>
+      <label>
+        {t("Layer name", "图层名称")}
+        <input
+          disabled={!editable}
+          value={l.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+        />
+      </label>
+      <label>
+        {t("Parent layer", "母图层")}
+        <select
+          aria-label="Layer parent"
+          disabled={!editable}
+          value={bucketOf(l)}
+          onChange={(e) => onChange({ bucket: e.target.value })}
+        >
+          {ROOT_LAYERS.map(([id, en, zh]) => (
+            <option value={id} key={id}>
+              {t(en, zh)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {t("Data category", "数据类别")}
+        <select
+          disabled={!editable}
+          value={categoryOf(l)}
+          onChange={(e) => onChange({ category: e.target.value })}
+        >
+          {CATEGORIES.map(([id, en, zh]) => (
+            <option value={id} key={id}>
+              {t(en, zh)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button className="v2-wide" onClick={() => onCopy(l)}>
+        {t("Copy to Analysis", "复制到分析图层")}
+      </button>
+      {!editable && (
+        <small>
+          {t(
+            "Display geometry and attributes are locked. Copy to Analysis to edit or calculate. All layers can be styled in Symbology.",
+            "展示图层的几何与属性只读，复制到分析图层后可编辑和计算。所有图层均可在符号系统设置显示样式。",
+          )}
+        </small>
+      )}
+      {editable && l.kind === "raster" && (
+        <>
+          <label>
+            {t("Raster role", "栅格角色")}
+            <select
+              value={l.role || "data"}
+              onChange={(e) => onChange({ role: e.target.value })}
+            >
+              <option value="data">{t("Data only", "仅数据")}</option>
+              <option value="dem">{t("Elevation", "高程")}</option>
+              <option value="lst">LST</option>
+              <option value="imagery">{t("Base imagery", "底图")}</option>
+            </select>
+          </label>
+          <label>
+            {t("Unit", "单位")}
+            <input
+              value={l.unit || ""}
+              onChange={(e) => onChange({ unit: e.target.value })}
+            />
+          </label>
+        </>
+      )}
+      {editable && l.kind === "vector" && (
+        <>
+          <label>
+            {t("Building height field · metres", "建筑离地高度字段 · 米")}
+            <select
+              value={l.heightField || ""}
+              onChange={(e) => onChange({ heightField: e.target.value })}
+            >
+              <option value="">{t("No extrusion", "不拉伸")}</option>
+              {fieldNames(l).map((f) => (
+                <option key={f}>{f}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="v2-wide"
+            onClick={() => {
+              setText(JSON.stringify(l.data, null, 2));
+              setEditing(true);
+            }}
+          >
+            {t("Edit GeoJSON copy", "编辑 GeoJSON 副本")}
+          </button>
+          {editing && (
+            <>
+              <textarea
+                aria-label="GeoJSON editor"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+              <button
+                onClick={async () => {
+                  if (await onGeometry(l, text)) setEditing(false);
+                }}
+              >
+                {t("Validate and apply", "校验并应用")}
+              </button>
+              <button onClick={() => setEditing(false)}>
+                {t("Cancel", "取消")}
+              </button>
+            </>
+          )}
+          <small>
+            {t(
+              "Attributes can also be edited on selected rows in the attribute table. Source files are never overwritten.",
+              "也可在属性表编辑选中行。原始文件不会被覆盖。",
+            )}
+          </small>
+        </>
+      )}
+      {editable && (
+        <button className="v2-wide" onClick={onRemove}>
+          {t("Remove layer", "移除图层")}
+        </button>
+      )}
+    </div>
   );
 }

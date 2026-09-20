@@ -20,6 +20,7 @@ import {
   groupSelection,
   ungroup,
 } from "./circuit.mjs";
+import { remapDemoGraph } from "./layer-policy.mjs";
 import { jsonDownload } from "./project.mjs";
 function Battery({ data, selected }) {
   const def = COMPONENTS[data.component];
@@ -66,6 +67,7 @@ function Battery({ data, selected }) {
 }
 const nodeTypes = { battery: Battery };
 export default function Circuit({
+  mode = "local",
   graph,
   setGraph,
   layers,
@@ -201,7 +203,12 @@ export default function Circuit({
           }}
         />
         <b>
-          ◈ CIRCUIT 2 <span>{t("Local components", "本地电池")}</span>
+          ◈ CIRCUIT 2{" "}
+          <span>
+            {mode === "cloud"
+              ? t("Cloud example", "云端示例")
+              : t("Local components", "本地电池")}
+          </span>
         </b>
         <div>
           <button
@@ -245,7 +252,8 @@ export default function Circuit({
                 if (!e.target.value) return;
                 if (e.target.value === "empty")
                   setGraph({ version: 2, nodes: [], edges: [] });
-                else if (e.target.value === "scene") setGraph(defaultGraph());
+                else if (e.target.value === "scene")
+                  setGraph(remapDemoGraph(defaultGraph(), layers));
                 else {
                   const layer =
                     layers.find(

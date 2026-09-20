@@ -1,8 +1,10 @@
+import { canEdit } from "./layer-policy.mjs";
 import React, { useState, useMemo, useEffect } from "react";
 import { gridGeoJSON } from "./raster-grid.mjs";
 import { jsonDownload } from "./project.mjs";
 export default function Attributes({
   model,
+  onEdit,
   layers,
   close,
   t,
@@ -11,6 +13,8 @@ export default function Attributes({
   setSelection,
   initial = "grid",
 }) {
+  const [editValue, setEditValue] = useState(""),
+    [editType, setEditType] = useState("number");
   const [layer, setLayer] = useState(initial),
     [height, setHeight] = useState(250),
     [field, setField] = useState(""),
@@ -206,6 +210,45 @@ export default function Attributes({
           ›
         </button>
       </div>
+      {vector?.kind === "vector" && (
+        <div className="v2-attribute-editor">
+          {canEdit(vector) ? (
+            <>
+              <span>{t("Edit selected attributes", "编辑已选属性")}</span>
+              <select
+                aria-label="Attribute edit type"
+                value={editType}
+                onChange={(e) => setEditType(e.target.value)}
+              >
+                <option value="number">{t("Number", "数值")}</option>
+                <option value="text">{t("Text", "文本")}</option>
+                <option value="null">Null</option>
+              </select>
+              <input
+                aria-label="New attribute value"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                placeholder={t("New value", "新值")}
+              />
+              <button
+                disabled={!selection.length || !field}
+                onClick={() =>
+                  onEdit?.(vector.id, selection, field, editValue, editType)
+                }
+              >
+                {t("Apply to selected", "应用到已选")}
+              </button>
+            </>
+          ) : (
+            <span>
+              {t(
+                "Display data is read-only. Copy it to Analysis to edit.",
+                "展示数据只读，请先复制到分析图层。",
+              )}
+            </span>
+          )}
+        </div>
+      )}
       <div className="v2-table-scroll">
         <table>
           <thead>
