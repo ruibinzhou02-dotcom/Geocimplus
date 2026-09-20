@@ -1,0 +1,220 @@
+{
+  "version": 2,
+  "nodes": [
+    {
+      "id": "dem",
+      "type": "battery",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "component": "raster",
+        "params": {
+          "layer": "dem"
+        }
+      }
+    },
+    {
+      "id": "lst",
+      "type": "battery",
+      "position": {
+        "x": 0,
+        "y": 220
+      },
+      "data": {
+        "component": "raster",
+        "params": {
+          "layer": "lst"
+        }
+      }
+    },
+    {
+      "id": "buildings",
+      "type": "battery",
+      "position": {
+        "x": 270,
+        "y": -190
+      },
+      "data": {
+        "component": "vector",
+        "params": {
+          "layer": "buildings"
+        }
+      }
+    },
+    {
+      "id": "weather",
+      "type": "battery",
+      "position": {
+        "x": 810,
+        "y": 440
+      },
+      "data": {
+        "component": "weather",
+        "params": {
+          "layer": "epw"
+        }
+      }
+    },
+    {
+      "id": "grid",
+      "type": "battery",
+      "position": {
+        "x": 270,
+        "y": 0
+      },
+      "data": {
+        "component": "grid",
+        "params": {
+          "size": 30,
+          "crs": "EPSG:32650"
+        }
+      }
+    },
+    {
+      "id": "lstgrid",
+      "type": "battery",
+      "position": {
+        "x": 540,
+        "y": 220
+      },
+      "data": {
+        "component": "grid",
+        "params": {
+          "size": 30,
+          "crs": "EPSG:32650"
+        }
+      }
+    },
+    {
+      "id": "ground",
+      "type": "battery",
+      "position": {
+        "x": 540,
+        "y": 0
+      },
+      "data": {
+        "component": "ground",
+        "params": {}
+      }
+    },
+    {
+      "id": "surface",
+      "type": "battery",
+      "position": {
+        "x": 810,
+        "y": 0
+      },
+      "data": {
+        "component": "terrain",
+        "params": {}
+      }
+    },
+    {
+      "id": "style",
+      "type": "battery",
+      "position": {
+        "x": 810,
+        "y": 220
+      },
+      "data": {
+        "component": "style",
+        "params": {
+          "ramp": "thermal"
+        }
+      }
+    },
+    {
+      "id": "view",
+      "type": "battery",
+      "position": {
+        "x": 1100,
+        "y": 60
+      },
+      "data": {
+        "component": "output",
+        "params": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "dem-grid-raster",
+      "source": "dem",
+      "target": "grid",
+      "sourceHandle": "out",
+      "targetHandle": "raster"
+    },
+    {
+      "id": "lst-lstgrid-raster",
+      "source": "lst",
+      "target": "lstgrid",
+      "sourceHandle": "out",
+      "targetHandle": "raster"
+    },
+    {
+      "id": "grid-lstgrid-align",
+      "source": "grid",
+      "target": "lstgrid",
+      "sourceHandle": "out",
+      "targetHandle": "align"
+    },
+    {
+      "id": "grid-ground-grid",
+      "source": "grid",
+      "target": "ground",
+      "sourceHandle": "out",
+      "targetHandle": "grid"
+    },
+    {
+      "id": "buildings-ground-buildings",
+      "source": "buildings",
+      "target": "ground",
+      "sourceHandle": "out",
+      "targetHandle": "buildings"
+    },
+    {
+      "id": "ground-surface-grid",
+      "source": "ground",
+      "target": "surface",
+      "sourceHandle": "out",
+      "targetHandle": "grid"
+    },
+    {
+      "id": "lstgrid-style-grid",
+      "source": "lstgrid",
+      "target": "style",
+      "sourceHandle": "out",
+      "targetHandle": "grid"
+    },
+    {
+      "id": "surface-view-terrain",
+      "source": "surface",
+      "target": "view",
+      "sourceHandle": "out",
+      "targetHandle": "terrain"
+    },
+    {
+      "id": "style-view-analysis",
+      "source": "style",
+      "target": "view",
+      "sourceHandle": "out",
+      "targetHandle": "analysis"
+    },
+    {
+      "id": "buildings-view-buildings",
+      "source": "buildings",
+      "target": "view",
+      "sourceHandle": "out",
+      "targetHandle": "buildings"
+    },
+    {
+      "id": "weather-view-weather",
+      "source": "weather",
+      "target": "view",
+      "sourceHandle": "out",
+      "targetHandle": "weather"
+    }
+  ]
+}
