@@ -1,10 +1,66 @@
 import { job } from "./jobs.mjs";
-import { formulaGrid } from "./formula.mjs";
+import { runJob } from "../jobs.mjs";
+import { metricCRS, transform } from "./geo.mjs";
 export const COMPONENTS = {
+  gridInput: {
+    group: "Input",
+    label: "Fishnet input",
+    inputs: {},
+    out: "grid",
+  },
+  points: { group: "Input", label: "Point input", inputs: {}, out: "points" },
+  polygons: {
+    group: "Input",
+    label: "Polygon input",
+    inputs: {},
+    out: "polygons",
+  },
+  measure: {
+    group: "Vector analysis",
+    label: "Area / length",
+    inputs: { features: "vector" },
+    out: "vector",
+  },
+  statistics: {
+    group: "Vector analysis",
+    label: "Field statistics",
+    inputs: { features: "vector" },
+    out: "summary",
+  },
+  centroid: {
+    group: "Vector analysis",
+    label: "Representative points",
+    inputs: { features: "vector" },
+    out: "points",
+  },
+  buffer: {
+    group: "Vector analysis",
+    label: "Buffer",
+    inputs: { features: "vector" },
+    out: "polygons",
+  },
+  kde: {
+    group: "Vector analysis",
+    label: "Point kernel density",
+    inputs: { features: "points" },
+    out: "polygons",
+  },
+  publish: {
+    group: "Output",
+    label: "Analysis layer",
+    inputs: { features: "vector" },
+    out: "result",
+  },
+  report: {
+    group: "Output",
+    label: "Statistics report",
+    inputs: { summary: "summary" },
+    out: "result",
+  },
   clip: {
     group: "Coordinate / Grid",
     label: "Clip grid by boundary",
-    inputs: { grid: "grid", boundary: "vector" },
+    inputs: { grid: "grid", boundary: "polygons" },
     out: "grid",
   },
   raster: { group: "Input", label: "Raster input", inputs: {}, out: "raster" },
@@ -19,7 +75,7 @@ export const COMPONENTS = {
   ground: {
     group: "Terrain",
     label: "Flatten building ground",
-    inputs: { grid: "grid", buildings: "vector" },
+    inputs: { grid: "grid", buildings: "polygons" },
     out: "grid",
   },
   terrain: {
@@ -71,7 +127,7 @@ export function defaultGraph() {
     nodes: [
       node("dem", "raster", 0, 0, { layer: "dem" }),
       node("lst", "raster", 0, 220, { layer: "lst" }),
-      node("buildings", "vector", 270, -190, { layer: "buildings" }),
+      node("buildings", "polygons", 270, -190, { layer: "buildings" }),
       node("weather", "weather", 810, 440, { layer: "epw" }),
       node("grid", "grid", 270, 0, { size: 30, crs: "EPSG:32650" }),
       node("lstgrid", "grid", 540, 220, { size: 30, crs: "EPSG:32650" }),
@@ -94,6 +150,114 @@ export function defaultGraph() {
       edge("weather", "view", "weather"),
     ],
   };
+}
+export const PORT_TYPES = {
+  raster: "Geo-referenced numeric or RGB raster",
+  vector: "GeoJSON feature collection (WGS84)",
+  points: "Point / MultiPoint features (WGS84)",
+  polygons: "Polygon / MultiPolygon features (WGS84)",
+  grid: "Aligned metric fishnet: CRS, cell size, values, NoData",
+  terrain: "Continuous mesh from a metric grid",
+  weather: "EPW station and hourly weather records",
+  summary: "Named statistical values",
+  scene: "Scene preview",
+  result: "Published result",
+};
+export function acceptsPort(out, input) {
+  const t = input?.replace("?", "");
+  return out === t || (t === "vector" && ["points", "polygons"].includes(out));
+}
+export function validateInputLayer(component, layer) {
+  if (!layer) throw new Error("Select a loaded input layer.");
+  const expected =
+    {
+      weather: "epw",
+      gridInput: "vector",
+      points: "vector",
+      polygons: "vector",
+    }[component] || component;
+  if (layer.kind !== expected) throw new Error("Input layer type mismatch.");
+  if (component === "gridInput" && !layer.gridData)
+    throw new Error("Select a converted fishnet layer.");
+  if (["points", "polygons"].includes(component)) {
+    const types =
+      component === "points"
+        ? ["Point", "MultiPoint"]
+        : ["Polygon", "MultiPolygon"];
+    if (
+      !layer.data.features.length ||
+      layer.data.features.some((f) => !types.includes(f.geometry?.type))
+    )
+      throw new Error(`Expected ${component} geometry.`);
+  }
+  return component === "gridInput" ? layer.gridData : layer;
+}
+// Old V2 files used a generic vector source for building/boundary ports.
+export function migrateGraph(graph) {
+  if (!Array.isArray(graph?.nodes) || !Array.isArray(graph?.edges))
+    throw new Error("Invalid Circuit file.");
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) =>
+      n.data?.component === "vector" &&
+      graph.edges.some(
+        (e) =>
+          e.source === n.id &&
+          ["buildings", "boundary"].includes(e.targetHandle) &&
+          ["ground", "clip"].includes(
+            graph.nodes.find((x) => x.id === e.target)?.data?.component,
+          ),
+      )
+        ? { ...n, data: { ...n.data, component: "polygons" } }
+        : n,
+    ),
+  };
+}
+export function analysisGraph(layer, operation = "kde") {
+  const isPoint = layer.data.features.every((f) =>
+    ["Point", "MultiPoint"].includes(f.geometry.type),
+  );
+  const nodes = [
+      node("source", isPoint ? "points" : "vector", 0, 80, { layer: layer.id }),
+    ],
+    edges = [];
+  let input = "source";
+  if (operation === "kde" && !isPoint) {
+    nodes.push(node("points", "centroid", 290, 80));
+    edges.push(edge(input, "points", "features"));
+    input = "points";
+  }
+  nodes.push(
+    node(
+      "analysis",
+      operation,
+      operation === "kde" && !isPoint ? 580 : 290,
+      80,
+      {
+        distance: 100,
+        bandwidth: 200,
+        cellSize: 50,
+        field: layer.heightField || "",
+      },
+    ),
+  );
+  edges.push(edge(input, "analysis", "features"));
+  nodes.push(
+    node(
+      "result",
+      operation === "statistics" ? "report" : "publish",
+      operation === "kde" && !isPoint ? 870 : 580,
+      80,
+    ),
+  );
+  edges.push(
+    edge(
+      "analysis",
+      "result",
+      operation === "statistics" ? "summary" : "features",
+    ),
+  );
+  return { version: 2, nodes, edges };
 }
 export function validateGraph(graph) {
   if (
@@ -127,7 +291,11 @@ export function validateGraph(graph) {
       b = map.get(e.target),
       input = b && COMPONENTS[b.data.component].inputs[e.targetHandle],
       out = a && COMPONENTS[a.data.component].out;
-    if (!input || out !== input.replace("?", ""))
+    if (
+      !input ||
+      !acceptsPort(out, input) ||
+      (e.sourceHandle && e.sourceHandle !== "out")
+    )
       throw new Error("Incompatible component ports.");
     const k = e.target + ":" + e.targetHandle;
     if (ports.has(k)) throw new Error("Only one connection per input.");
@@ -148,13 +316,24 @@ export function validateGraph(graph) {
   }
   return order;
 }
-export async function evaluateGraph(graph, layers, onStep = () => {}) {
+export async function evaluateGraph(
+  graph,
+  layers,
+  onStep = () => {},
+  execute = job,
+  spatial = (payload) => runJob(payload).promise,
+) {
+  graph = migrateGraph(graph);
   const order = validateGraph(graph),
     results = new Map();
   let scene = null;
-  const outputs = order.filter((n) => n.data.component === "output");
+  const outputs = order.filter((n) =>
+    ["output", "publish", "report"].includes(n.data.component),
+  );
   if (outputs.length !== 1)
-    throw new Error("Use exactly one Scene preview output per circuit.");
+    throw new Error(
+      "Use exactly one output: Scene preview, Analysis layer or Statistics report.",
+    );
   const needed = new Set([outputs[0].id]);
   let changed = true;
   while (changed) {
@@ -170,68 +349,129 @@ export async function evaluateGraph(graph, layers, onStep = () => {}) {
       def = COMPONENTS[c],
       args = {};
     onStep(n.id, "running");
-    for (const [port, type] of Object.entries(def.inputs)) {
-      const e = graph.edges.find(
-        (e) => e.target === n.id && e.targetHandle === port,
-      );
-      if (!e && !type.endsWith("?"))
-        throw new Error(`${def.label}: connect ${port}.`);
-      args[port] = e ? results.get(e.source) : null;
-    }
-    let value;
-    if (["raster", "vector", "weather"].includes(c)) {
-      value = layers.find((l) => l.id === p.layer);
-      if (!value) throw new Error(`${def.label}: select a loaded layer.`);
-      if ((c === "weather" ? "epw" : c) !== value.kind)
-        throw new Error("Input layer type mismatch.");
-    } else if (c === "grid")
-      value = await job("grid", {
-        raster: args.raster,
-        size: Number(p.size || 30),
-        crs: p.crs || "EPSG:32650",
-        grid: args.align || null,
-      });
-    else if (c === "clip")
-      value = await job("clip", {
-        grid: args.grid,
-        features: args.boundary.data.features,
-      });
-    else if (c === "ground")
-      value =
-        p.enabled === false
-          ? args.grid
-          : await job("ground", {
-              grid: args.grid,
-              features: args.buildings.data.features,
-            });
-    else if (c === "terrain") value = { grid: args.grid };
-    else if (c === "formula")
-      value = await job("formula", {
-        grid: args.grid,
-        expression: p.expression || "x",
-        unit: p.unit,
-      });
-    else if (c === "style") value = { ...args.grid, ramp: p.ramp || "thermal" };
-    else if (c === "output") {
-      scene = {
-        grid: args.terrain.grid,
-        lst: args.analysis,
-        weather: args.weather,
-        buildingIds: args.buildings ? [args.buildings.id] : [],
-      };
+    try {
+      for (const [port, type] of Object.entries(def.inputs)) {
+        const e = graph.edges.find(
+          (e) => e.target === n.id && e.targetHandle === port,
+        );
+        if (!e && !type.endsWith("?"))
+          throw new Error(`${def.label}: connect ${port}.`);
+        args[port] = e ? results.get(e.source) : null;
+      }
+      let value;
       if (
-        scene.lst &&
-        (scene.lst.cols !== scene.grid.cols ||
-          scene.lst.rows !== scene.grid.rows ||
-          scene.lst.crs !== scene.grid.crs ||
-          scene.lst.origin.some((v, i) => v !== scene.grid.origin[i]) ||
-          scene.lst.size !== scene.grid.size)
-      )
-        throw new Error("Analysis and terrain grids must share alignment.");
-      value = scene;
+        [
+          "raster",
+          "vector",
+          "weather",
+          "points",
+          "polygons",
+          "gridInput",
+        ].includes(c)
+      ) {
+        value = layers.find((l) => l.id === p.layer);
+        if (!value) throw new Error(`${def.label}: select a loaded layer.`);
+        value = validateInputLayer(c, value);
+      } else if (c === "grid")
+        value = await execute("grid", {
+          raster: args.raster,
+          size: Number(p.size ?? 30),
+          crs:
+            p.crs ||
+            metricCRS(
+              ...transform(
+                args.raster.crs,
+                "EPSG:4326",
+              )([
+                (args.raster.extent[0] + args.raster.extent[2]) / 2,
+                (args.raster.extent[1] + args.raster.extent[3]) / 2,
+              ]),
+            ),
+          method: p.method || "mean",
+          grid: args.align || null,
+        });
+      else if (
+        ["measure", "statistics", "centroid", "buffer", "kde"].includes(c)
+      ) {
+        if (c === "kde") validateInputLayer("points", args.features);
+        if (
+          c === "statistics" &&
+          (!p.field ||
+            !args.features.data.features.some((f) =>
+              Object.hasOwn(f.properties || {}, p.field),
+            ))
+        )
+          throw new Error("Select an existing field for statistics.");
+        value = await spatial({
+          job: "analysis",
+          data: args.features.data,
+          options: {
+            operation: c,
+            field: p.field || "",
+            distance: Number(p.distance ?? 100),
+            bandwidth: Number(p.bandwidth ?? 200),
+            cellSize: Number(p.cellSize ?? 50),
+            weightField: p.weightField || "",
+            sourceId: args.features.id,
+            sourceName: args.features.name,
+            id: `circuit-${n.id}`,
+          },
+        });
+        value = {
+          ...value,
+          name: `${def.label} · ${args.features.name}`,
+          category: "analysis",
+          heightField: "",
+        };
+      } else if (c === "publish" || c === "report") {
+        scene = { result: args.features || args.summary };
+        value = scene;
+      } else if (c === "clip")
+        value = await execute("clip", {
+          grid: args.grid,
+          features: args.boundary.data.features,
+        });
+      else if (c === "ground")
+        value =
+          p.enabled === false
+            ? args.grid
+            : await execute("ground", {
+                grid: args.grid,
+                features: args.buildings.data.features,
+              });
+      else if (c === "terrain") value = { grid: args.grid };
+      else if (c === "formula")
+        value = await execute("formula", {
+          grid: args.grid,
+          expression: p.expression || "x",
+          unit: p.unit,
+        });
+      else if (c === "style")
+        value = { ...args.grid, ramp: p.ramp || "thermal" };
+      else if (c === "output") {
+        scene = {
+          grid: args.terrain.grid,
+          lst: args.analysis,
+          weather: args.weather,
+          buildingIds: args.buildings ? [args.buildings.id] : [],
+        };
+        if (
+          scene.lst &&
+          (scene.lst.cols !== scene.grid.cols ||
+            scene.lst.rows !== scene.grid.rows ||
+            scene.lst.crs !== scene.grid.crs ||
+            scene.lst.origin.some((v, i) => v !== scene.grid.origin[i]) ||
+            scene.lst.size !== scene.grid.size)
+        )
+          throw new Error("Analysis and terrain grids must share alignment.");
+        value = scene;
+      }
+      results.set(n.id, value);
+      onStep(n.id, "done");
+    } catch (error) {
+      onStep(n.id, "error");
+      throw new Error(`${def.label}: ${error.message}`);
     }
-    results.set(n.id, value);
-    onStep(n.id, "done");
   }
   if (!scene) throw new Error("Connect a Scene preview output.");
   return scene;

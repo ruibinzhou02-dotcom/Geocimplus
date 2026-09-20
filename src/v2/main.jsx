@@ -3,9 +3,15 @@ import { createRoot } from "react-dom/client";
 import { job } from "./jobs.mjs";
 import { runJob } from "../jobs.mjs";
 import { metricCRS, transform } from "./geo.mjs";
-import { stats } from "./raster-grid.mjs";
+import { gridGeoJSON, stats } from "./raster-grid.mjs";
 import { terrainMesh, buildingModels } from "./model.mjs";
-import { defaultGraph, evaluateGraph, validateGraph } from "./circuit.mjs";
+import {
+  defaultGraph,
+  evaluateGraph,
+  validateGraph,
+  analysisGraph,
+  migrateGraph,
+} from "./circuit.mjs";
 import {
   packProject,
   unpackProject,
@@ -14,6 +20,13 @@ import {
   localProjects,
 } from "./project.mjs";
 import { RAMPS } from "./terrain-mesh.mjs";
+import { normalizeLayer, categoryOf } from "./layers.mjs";
+import {
+  LayerTree,
+  LayerStyle,
+  UploadPanel,
+  ConversionPanel,
+} from "./LayerPanels.jsx";
 import Scene from "./Scene.jsx";
 import Climate from "./Climate.jsx";
 import Attributes from "./Attributes.jsx";
@@ -29,7 +42,7 @@ const initialStyle = {
   zScale: 1,
   buildings: true,
   buildingColor: "#e4dfee",
-  buildingOpacity: 0.95,
+  buildingOpacity: 1,
   ramp: "thermal",
   min: 25,
   max: 39,
@@ -38,6 +51,11 @@ const initialStyle = {
   imageryOpacity: 1,
 };
 function App() {
+  const [selectedLayer, setSelectedLayer] = useState("");
+  const [plugin, setPlugin] = useState(false);
+  const [uploadCategory, setUploadCategory] = useState("other");
+  const [uploadRole, setUploadRole] = useState("data");
+  const [uploadUnit, setUploadUnit] = useState("");
   const [mapSelection, setMapSelection] = useState(null);
   const [dockHeight, setDockHeight] = useState(360);
   const [lang, setLang] = useState(
@@ -67,10 +85,6 @@ function App() {
     [weather, setWeather] = useState(null),
     [chat, setChat] = useState([]),
     [prompt, setPrompt] = useState(""),
-    [inputLayer, setInputLayer] = useState(""),
-    [operation, setOperation] = useState("measure"),
-    [field, setField] = useState(""),
-    [distance, setDistance] = useState(100),
     [result, setResult] = useState(null);
   const fileInput = useRef(null),
     projectInput = useRef(null),
@@ -248,7 +262,7 @@ function App() {
       for (const source of catalog.sources) {
         const f = await fetch("/v2-data/" + source.url);
         if (!f.ok) throw new Error(source.url + " unavailable");
-        const meta = { ...source, visible: true };
+        const meta = normalizeLayer({ ...source, visible: true });
         if (source.kind === "raster")
           ls.push(
             await job("readRaster", { buffer: await f.arrayBuffer(), meta }),
@@ -313,7 +327,9 @@ function App() {
                 id: crypto.randomUUID(),
                 name: f.name,
                 visible: true,
-                role: "dem",
+                role: uploadRole,
+                category: uploadCategory,
+                ...(uploadUnit.trim() ? { unit: uploadUnit.trim() } : {}),
               },
             }),
           );
@@ -326,6 +342,12 @@ function App() {
           ...items.map((i) => ({ ...i, visible: true, heightField: "" })),
         );
       }
+      ls = ls.map((l) =>
+        normalizeLayer({
+          ...l,
+          category: l.kind === "epw" ? undefined : uploadCategory,
+        }),
+      );
       const all = [...layers, ...ls];
       if (all.length > 24) throw new Error("Project limit: 24 layers.");
       setLayers(all);
@@ -333,9 +355,11 @@ function App() {
       await construct(all);
     });
   const restore = async (p) => {
+    p.graph = migrateGraph(p.graph);
     validateGraph(p.graph);
     setId(p.id);
     setName(p.name);
+    p.layers = p.layers.map(normalizeLayer);
     setLayers(p.layers);
     setGraph(p.graph);
     setStyle({ ...initialStyle, ...p.style });
@@ -383,13 +407,44 @@ function App() {
   const runCircuit = () =>
     guard(async () => {
       setNodeStatus({});
+      setResult(null);
       const scene = await evaluateGraph(graph, layers, (id, status) => {
         setNodeStatus((s) => ({ ...s, [id]: status }));
         setNotice(
           `${status === "running" ? "▶" : "✓"} ${graph.nodes.find((n) => n.id === id)?.data.component}`,
         );
       });
-      await finishModel(scene, layers);
+      if (scene.result) {
+        if (scene.result.kind === "summary") {
+          setResult(scene.result);
+          setNotice(
+            t(
+              "Circuit finished · statistics shown in the component panel.",
+              "Circuit 已完成 · 统计见电池面板。",
+            ),
+          );
+        } else {
+          const output = normalizeLayer({
+            ...scene.result,
+            category: "analysis",
+            visible: true,
+            heightField: "",
+            symbology: scene.result.density
+              ? {
+                  mode: "equal",
+                  field: scene.result.density.field,
+                  ramp: "thermal",
+                  classes: 5,
+                }
+              : undefined,
+          });
+          const all = [...layers.filter((l) => l.id !== output.id), output];
+          if (all.length > 24) throw new Error("Project limit: 24 layers.");
+          setLayers(all);
+          setSelectedLayer(output.id);
+          await construct(all);
+        }
+      } else await finishModel(scene, layers);
     });
   const export3dm = () =>
     guard(async () => {
@@ -425,11 +480,76 @@ function App() {
   };
   const sendChat = () => {
     const text = prompt.trim();
-    if (!text) return;
+    if (!text || busy) return;
     let reply;
-    if (/属性|attribute|table/i.test(text)) {
+    if (/density|核密度/i.test(text)) {
+      const l = layers.find(
+        (l) => l.kind === "vector" && l.data.features.length,
+      );
+      if (l) {
+        setGraph(analysisGraph(l, "kde"));
+        setCircuit(true);
+        setTable(false);
+        reply = t(
+          "Density circuit created. Review inputs and run it in CIRCUIT.",
+          "已创建核密度流程，请在 CIRCUIT 检查输入并运行。",
+        );
+      } else reply = t("Upload a vector layer first.", "请先上传矢量图层。");
+    } else if (/transparen|透明/i.test(text)) {
+      const amount = Number(text.match(/(\d+(?:\.\d+)?)\s*%/)?.[1] ?? 70);
+      if (amount < 0 || amount > 100)
+        reply = t(
+          "Transparency must be between 0% and 100%.",
+          "透明度范围为 0%–100%。",
+        );
+      else {
+        changeStyle({ buildingOpacity: 1 - amount / 100 });
+        setLayers((ls) =>
+          ls.map((l) =>
+            l.heightField
+              ? { ...l, symbology: { ...l.symbology, opacity: 1 } }
+              : l,
+          ),
+        );
+        reply = t(
+          `Building transparency set to ${amount}%.`,
+          `建筑透明度已设为 ${amount}%。`,
+        );
+      }
+    } else if (/taller|高于|超过/i.test(text)) {
+      const l = layers.find((l) => l.heightField),
+        height = Number(text.match(/(\d+(?:\.\d+)?)/)?.[1] ?? 50);
+      if (l) {
+        const ids = l.data.features.flatMap((f, i) =>
+          Number(f.properties[l.heightField]) > height ? [i] : [],
+        );
+        setSelection(ids);
+        setMapSelection({ layer: l.id, ids });
+        reply = t(
+          `Selected ${ids.length} buildings above ${height} m.`,
+          `已选择 ${ids.length} 栋高于 ${height} 米的建筑。`,
+        );
+      } else
+        reply = t(
+          "Set a building height field first.",
+          "请先指定建筑高度字段。",
+        );
+    } else if (/population|人口/i.test(text)) {
+      const l = layers.find((l) => /population|人口/i.test(l.name));
+      if (l) {
+        setLayers((ls) =>
+          ls.map((x) => (x.id === l.id ? { ...x, visible: true } : x)),
+        );
+        reply = t("Population layer shown.", "已显示人口图层。");
+      } else
+        reply = t(
+          "No population layer is loaded. Add it in Upload.",
+          "尚未加载人口图层，请在上传页添加。",
+        );
+    } else if (/属性|attribute|table/i.test(text)) {
       tableOpen(
         layers.find((l) => l.kind === "vector" && text.includes(l.name))?.id ||
+          layers.find((l) => l.kind === "vector")?.id ||
           "grid",
       );
       reply = t("Opened the attribute table.", "已打开属性表。");
@@ -440,7 +560,7 @@ function App() {
       changeStyle({ wire: true });
       reply = t("Grid borders visible.", "已显示网格边框。");
     } else if (/气象|天气|weather|epw/i.test(text)) {
-      setTab("climate");
+      setPlugin(true);
       reply = t("Opened the weather reader.", "已打开气象读取器。");
     } else if (/俯视|top view/i.test(text)) {
       sceneAPI.current?.top();
@@ -456,39 +576,71 @@ function App() {
     setChat((c) => [...c, { text, reply }]);
     setPrompt("");
   };
-  const basic = () =>
+  const convertRaster = (source, options) =>
     guard(async () => {
-      const l =
-        layers.find((l) => l.id === inputLayer) ||
-        layers.find((l) => l.kind === "vector");
-      if (!l) throw new Error("Import a vector layer first.");
-      const r = await runJob({
-        job: "analysis",
-        data: l.data,
-        options: {
-          operation,
-          field,
-          distance,
-          bandwidth: distance,
-          cellSize: Math.min(size, distance),
-          sourceName: l.name,
-          sourceId: l.id,
-          id: crypto.randomUUID(),
+      setNotice(t("Resampling raster locally…", "正在本地转换栅格…"));
+      const ll = transform(
+        source.crs,
+        "EPSG:4326",
+      )([
+        (source.extent[0] + source.extent[2]) / 2,
+        (source.extent[1] + source.extent[3]) / 2,
+      ]);
+      if (layers.length >= 24) throw new Error("Project limit: 24 layers.");
+      const g = await job("grid", {
+        raster: source,
+        size: options.size,
+        crs: metricCRS(...ll),
+        method: options.method,
+      });
+      if (stats(g.mean).count > 100000)
+        throw new Error(
+          "Increase cell size to keep the fishnet below 100,000 features.",
+        );
+      if (!stats(g.mean).count)
+        throw new Error(
+          "No valid samples. Try an area-weighted mean or a different cell size.",
+        );
+      const l = normalizeLayer({
+        id: crypto.randomUUID(),
+        name:
+          options.name.trim() || `${source.name} · ${options.size}m fishnet`,
+        kind: "vector",
+        category: "analysis",
+        visible: true,
+        heightField: "",
+        data: gridGeoJSON(g),
+        gridData: g,
+        crs: "EPSG:4326",
+        unit: g.unit,
+        symbology: {
+          mode: "equal",
+          field: "mean_value",
+          ramp: "thermal",
+          classes: 5,
+          outline: false,
         },
-      }).promise;
-      if (r.kind === "summary") setResult(r);
-      else {
-        const all = [
-          ...layers,
-          { ...r, name: `${operation} · ${l.name}`, visible: true },
-        ];
-        setLayers(all);
-        await construct(all);
-      }
+        analysis: { source: source.id, method: g.method, crs: g.crs },
+      });
+      const all = [...layers, l];
+      setLayers(all);
+      setSelectedLayer(l.id);
+      setTab("layers");
+      if (!model) await construct(all);
+      setNotice(
+        t(
+          `Created ${l.data.features.length.toLocaleString()} fishnet polygons in Analysis.`,
+          `已在分析主图层中生成 ${l.data.features.length.toLocaleString()} 个渔网面。`,
+        ),
+      );
     });
-  const selectedInput =
-    layers.find((l) => l.id === inputLayer) ||
-    layers.find((l) => l.kind === "vector");
+  const chooseLayer = (id) => {
+    setSelectedLayer(id);
+    setTab("layers");
+  };
+  const activeLayer =
+    layers.find((l) => l.id === selectedLayer && l.kind !== "epw") ||
+    layers.find((l) => l.kind !== "epw");
   const st = model?.lst ? stats(model.lst.mean) : null;
   const chooser = (
     <>
@@ -717,14 +869,17 @@ function App() {
           >
             ◈ CIRCUIT 2
           </button>
-          <button disabled={busy} onClick={() => fileInput.current.click()}>
-            ＋ {t("Import", "导入")}
+          <button disabled={busy} onClick={() => setTab("upload")}>
+            ＋ {t("Upload", "上传")}
           </button>
           <button disabled={busy} onClick={save}>
             {t("Save project", "保存项目")}
           </button>
           <button disabled={busy || !model} onClick={export3dm}>
             Rhino ↓
+          </button>
+          <button onClick={() => setPlugin(!plugin)}>
+            ◌ {t("Plugins", "插件")}
           </button>
           {language}
         </nav>
@@ -733,147 +888,23 @@ function App() {
         <aside className="v2-layers">
           <div className="v2-panel-heading">
             <b>{t("Layers", "图层")}</b>
-            <button disabled={busy} onClick={() => fileInput.current.click()}>
+            <button disabled={busy} onClick={() => setTab("upload")}>
               ＋
             </button>
           </div>
           {!layers.length && (
             <p>{t("Import your first dataset.", "导入第一份数据。")}</p>
           )}
-          {layers.map((l) => (
-            <div key={l.id} className="v2-layer">
-              <div>
-                <span className={"v2-layer-icon " + l.kind}>
-                  {l.kind === "epw"
-                    ? "☀"
-                    : l.kind === "raster"
-                      ? "▧"
-                      : /Point/.test(l.data.features[0]?.geometry.type)
-                        ? "•"
-                        : /Line/.test(l.data.features[0]?.geometry.type)
-                          ? "╱"
-                          : "⬡"}
-                </span>
-                <b>{l.name}</b>
-              </div>
-              <small>
-                {l.kind === "raster"
-                  ? `${l.width} × ${l.height} · ${l.crs}`
-                  : l.kind === "epw"
-                    ? `${l.data.records.length} hours`
-                    : l.data.features.length.toLocaleString() + " features"}
-              </small>
-              {l.kind === "raster" && (
-                <select
-                  aria-label={"Role " + l.name}
-                  disabled={busy}
-                  value={l.role}
-                  onChange={(e) =>
-                    setLayers((ls) =>
-                      ls.map((x) =>
-                        x.id === l.id ? { ...x, role: e.target.value } : x,
-                      ),
-                    )
-                  }
-                >
-                  <option value="dem">{t("Elevation", "高程")}</option>
-                  <option value="lst">
-                    {t("Analysis / LST", "分析 / LST")}
-                  </option>
-                  <option value="imagery">{t("Base imagery", "底图")}</option>
-                </select>
-              )}
-              {l.kind === "raster" && l.role !== "imagery" && (
-                <details>
-                  <summary>
-                    {t("Value unit", "数值单位")}: {l.unit}
-                  </summary>
-                  <input
-                    aria-label={"Unit " + l.name}
-                    value={l.unit || ""}
-                    onChange={(e) =>
-                      setLayers((ls) =>
-                        ls.map((x) =>
-                          x.id === l.id ? { ...x, unit: e.target.value } : x,
-                        ),
-                      )
-                    }
-                  />
-                  <small>
-                    {t(
-                      "Use m for elevation; rebuild after confirmation.",
-                      "高程使用 m；确认后重新构建。",
-                    )}
-                  </small>
-                </details>
-              )}
-              {l.kind === "vector" && (
-                <div className="v2-layer-actions">
-                  <button onClick={() => tableOpen(l.id)}>
-                    {t("Attributes", "属性表")}
-                  </button>
-                  <button
-                    aria-label={"Toggle " + l.name}
-                    onClick={() =>
-                      setLayers((ls) =>
-                        ls.map((x) =>
-                          x.id === l.id
-                            ? { ...x, visible: x.visible === false }
-                            : x,
-                        ),
-                      )
-                    }
-                  >
-                    {l.visible === false ? "○" : "●"}
-                  </button>
-                </div>
-              )}
-              {l.kind === "vector" && (
-                <details>
-                  <summary>{t("Height field", "高度字段")}</summary>
-                  <select
-                    value={l.heightField || ""}
-                    disabled={busy}
-                    onChange={(e) =>
-                      setLayers((ls) =>
-                        ls.map((x) =>
-                          x.id === l.id
-                            ? { ...x, heightField: e.target.value }
-                            : x,
-                        ),
-                      )
-                    }
-                  >
-                    <option value="">{t("No extrusion", "不拉伸")}</option>
-                    {Object.keys(l.data.features[0]?.properties || {}).map(
-                      (f) => (
-                        <option key={f}>{f}</option>
-                      ),
-                    )}
-                  </select>
-                </details>
-              )}
-              <button
-                className="v2-remove"
-                disabled={busy}
-                onClick={() => {
-                  const ls = layers.filter((x) => x.id !== l.id);
-                  setLayers(ls);
-                  guard(() => construct(ls));
-                }}
-                aria-label={"Remove " + l.name}
-              >
-                ×
-              </button>
-            </div>
-          ))}
+          <LayerTree
+            layers={layers}
+            setLayers={setLayers}
+            selected={selectedLayer}
+            onSelect={chooseLayer}
+            onTable={tableOpen}
+            t={t}
+          />
           <div className="v2-layer-footer">
-            {t(
-              "Analysis and imagery are separate layers.",
-              "分析图层与底图独立管理。",
-            )}
-            <br />
-            {t("Change roles, then rebuild.", "调整角色后，重新构建。")}
+            {t("One dataset · one child layer", "一份数据 · 一个子图层")}
           </div>
         </aside>
         <section
@@ -906,7 +937,7 @@ function App() {
                 <button
                   className="primary"
                   disabled={busy}
-                  onClick={() => fileInput.current.click()}
+                  onClick={() => setTab("upload")}
                 >
                   {t("Import local data", "导入本地数据")}
                 </button>
@@ -938,22 +969,26 @@ function App() {
                   {model.grid.crs} · {model.grid.size} m {t("grid", "网格")} · Z
                   ×{style.zScale}
                 </div>
-                {model.lst && style.lst && (
-                  <div className="v2-legend">
-                    <b>
-                      {t("Grid mean", "网格均值")} · {model.lst.unit}
-                    </b>
-                    <div
-                      style={{
-                        background: `linear-gradient(90deg,${RAMPS[style.ramp].join(",")})`,
-                      }}
-                    />
-                    <span>
-                      {Number(style.min).toFixed(1)}
-                      <em>{Number(style.max).toFixed(1)}</em>
-                    </span>
-                  </div>
-                )}
+                {model.lst &&
+                  style.lst &&
+                  layers.find((l) => l.id === model.lst.source)?.visible !==
+                    false &&
+                  !layers.find((l) => l.id === model.lst.source)?.symbology && (
+                    <div className="v2-legend">
+                      <b>
+                        {t("Grid mean", "网格均值")} · {model.lst.unit}
+                      </b>
+                      <div
+                        style={{
+                          background: `linear-gradient(90deg,${RAMPS[style.ramp].join(",")})`,
+                        }}
+                      />
+                      <span>
+                        {Number(style.min).toFixed(1)}
+                        <em>{Number(style.max).toFixed(1)}</em>
+                      </span>
+                    </div>
+                  )}
                 {picked !== null && (
                   <div className="v2-pick">
                     <button onClick={() => setPicked(null)}>×</button>
@@ -998,9 +1033,9 @@ function App() {
           <div className="v2-tabs">
             {[
               ["style", "Scene", "场景"],
-              ["climate", "Weather", "气象"],
+              ["layers", "Layers", "图层"],
               ["analysis", "Analysis", "分析"],
-              ["info", "Data", "数据"],
+              ["upload", "Upload", "上传"],
             ].map(([id, en, zh]) => (
               <button
                 key={id}
@@ -1016,6 +1051,13 @@ function App() {
               <>
                 <span className="eyebrow">TERRAIN / SANDBOX</span>
                 <h2>{t("Shape the scene", "构建场景")}</h2>
+                <ConversionPanel
+                  layers={layers}
+                  onConvert={convertRaster}
+                  busy={busy}
+                  t={t}
+                />
+                <hr />
                 <label>
                   {t("Grid size · metres", "网格大小 · 米")}
                   <div className="v2-fields">
@@ -1172,200 +1214,129 @@ function App() {
                 </small>
               </>
             )}
-            {tab === "climate" && <Climate weather={weather} t={t} />}{" "}
-            {tab === "analysis" && (
-              <>
-                <h2>{t("Analysis workbench", "分析工作台")}</h2>
-                <details open>
-                  <summary>{t("Basic analysis", "基础分析")}</summary>
-                  <label>
-                    {t("Input layer", "输入图层")}
-                    <select
-                      value={selectedInput?.id || ""}
-                      onChange={(e) => setInputLayer(e.target.value)}
-                    >
-                      {layers
-                        .filter((l) => l.kind === "vector")
-                        .map((l) => (
-                          <option key={l.id} value={l.id}>
-                            {l.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label>
-                    {t("Operation", "操作")}
-                    <select
-                      value={operation}
-                      onChange={(e) => setOperation(e.target.value)}
-                    >
-                      {[
-                        ["measure", "Area / length", "面积 / 长度"],
-                        ["statistics", "Field statistics", "字段统计"],
-                        ["centroid", "Representative points", "代表点"],
-                        ["buffer", "Buffer", "缓冲区"],
-                        ["kde", "Point kernel density", "点核密度"],
-                      ].map(([id, en, zh]) => (
-                        <option key={id} value={id}>
-                          {t(en, zh)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {operation === "statistics" && (
-                    <label>
-                      {t("Field", "字段")}
-                      <select
-                        value={field}
-                        onChange={(e) => setField(e.target.value)}
-                      >
-                        <option value="">{t("Select…", "请选择…")}</option>
-                        {Object.keys(
-                          selectedInput?.data.features[0]?.properties || {},
-                        ).map((f) => (
-                          <option key={f}>{f}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  {["buffer", "kde"].includes(operation) && (
-                    <label>
-                      {t("Distance / bandwidth · m", "距离 / 带宽 · 米")}
-                      <input
-                        type="number"
-                        min="10"
-                        max="5000"
-                        value={distance}
-                        onChange={(e) => setDistance(+e.target.value)}
-                      />
-                    </label>
-                  )}
-                  <button
-                    disabled={busy || !selectedInput}
-                    className="primary v2-wide"
-                    onClick={basic}
-                  >
-                    {t("Run locally", "在本地运行")}
-                  </button>
-                  {result && (
-                    <pre>{JSON.stringify(result.values, null, 2)}</pre>
-                  )}
-                </details>
-                <details>
-                  <summary>{t("Chat with GeoCIM", "与GeoCIM对话")}</summary>
-                  <span className="v2-chip">
-                    {t("LOCAL PRESETS", "本地预设")}
-                  </span>
-                  <div className="v2-chat">
-                    {chat.map((m, i) => (
-                      <div key={i}>
-                        <b>{m.text}</b>
-                        <p>{m.reply}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="v2-prompts">
-                    {[
-                      ["Open attributes", "打开属性表"],
-                      ["Show grid", "显示网格"],
-                      ["Top view", "俯视"],
-                    ].map(([en, zh]) => (
-                      <button key={en} onClick={() => setPrompt(t(en, zh))}>
-                        {t(en, zh)}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder={t(
-                      "Ask for a local operation…",
-                      "输入本地操作…",
-                    )}
-                  />
-                  <button onClick={sendChat} className="primary">
-                    {t("Run preset", "执行预设")}
-                  </button>
-                  <p>
-                    {t(
-                      "API connection and unrestricted code execution are not active.",
-                      "API 连接与任意代码执行尚未启用。",
-                    )}
-                  </p>
-                </details>
-              </>
+            {tab === "layers" && (
+              <LayerStyle
+                layer={activeLayer}
+                t={t}
+                onTable={tableOpen}
+                onChange={(p) =>
+                  setLayers((ls) =>
+                    ls.map((l) =>
+                      l.id === activeLayer.id ? { ...l, ...p } : l,
+                    ),
+                  )
+                }
+                onRemove={() =>
+                  guard(async () => {
+                    const ls = layers.filter((l) => l.id !== activeLayer.id);
+                    setLayers(ls);
+                    await construct(ls);
+                  })
+                }
+              />
             )}
-            {tab === "info" && (
-              <>
-                <span className="eyebrow">DATA / PROVENANCE</span>
-                <h2>{t("Know your inputs", "了解输入数据")}</h2>
-                <p>
-                  {t(
-                    "All computations run on this computer. No imported dataset is sent to a server.",
-                    "计算在此电脑执行，导入数据不会发送到服务器。",
-                  )}
-                </p>
-                {layers.map((l) => (
-                  <details key={l.id}>
-                    <summary>{l.name}</summary>
-                    <p>
-                      {l.kind} · {l.crs || "WGS84 / station metadata"}
-                      <br />
-                      {l.unit || ""}
-                      <br />
-                      {l.acquisition || ""}
-                    </p>
-                    {l.kind === "raster" && (
-                      <pre>
-                        {JSON.stringify(
-                          { ...stats(l.values), extent: l.extent },
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    )}
-                  </details>
-                ))}
-                {model && (
-                  <>
-                    <h3>{t("Result provenance", "结果说明")}</h3>
-                    <p>
-                      {model.grid.crs} · {model.grid.size} m<br />
-                      {model.grid.method}
-                    </p>
+            {tab === "upload" && (
+              <UploadPanel
+                category={uploadCategory}
+                setCategory={setUploadCategory}
+                role={uploadRole}
+                setRole={setUploadRole}
+                unit={uploadUnit}
+                setUnit={setUploadUnit}
+                onUpload={() => fileInput.current.click()}
+                busy={busy}
+                layers={layers}
+                t={t}
+              />
+            )}
+            {tab === "analysis" && (
+              <div className="v2-chat-panel">
+                <h2>{t("Chat with GeoCIM", "与GeoCIM对话")}</h2>
+                <label>
+                  {t("Chat mode", "对话模式")}
+                  <select value="local" readOnly>
+                    <option value="local">
+                      {t("Local commands", "本地指令")}
+                    </option>
+                  </select>
+                </label>
+                {!chat.length && (
+                  <div className="v2-chat-welcome">
+                    <span>◈</span>
+                    <h3>
+                      {t("Start with a spatial question", "从一个空间问题开始")}
+                    </h3>
                     <p>
                       {t(
-                        "DEM vertical datum is unknown. Ground under buildings is an estimate; unresolved areas remain gaps.",
-                        "DEM 垂直基准待确认。建筑下方地面是估算值，无法估算的区域保留空洞。",
+                        "Presets control the scene and create Circuit workflows.",
+                        "预设可以控制场景，并创建 Circuit 工作流程。",
                       )}
                     </p>
-                    <p>
-                      {t(
-                        "Building parts outside valid terrain",
-                        "有效地形外的建筑部分",
-                      )}
-                      : {model.buildings.skipped}
-                    </p>
-                    <button
-                      onClick={() =>
-                        jsonDownload(
-                          {
-                            crs: model.grid.crs,
-                            origin: model.grid.origin,
-                            size: model.grid.size,
-                            method: model.grid.method,
-                            ground: model.grid.groundMethod,
-                            lst: st,
-                          },
-                          "analysis-provenance.json",
-                        )
-                      }
-                    >
-                      {t("Export parameters", "导出参数")}
-                    </button>
-                  </>
+                  </div>
                 )}
-              </>
+                <div className="v2-chat">
+                  {chat.map((m, i) => (
+                    <div key={i}>
+                      <b>{m.text}</b>
+                      <p>{m.reply}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="v2-prompts">
+                  {[
+                    ["Open attribute table", "打开属性表"],
+                    ["Select buildings taller than 50 m", "选择高于50米的建筑"],
+                    ["Set building transparency to 70%", "设置建筑透明度为70%"],
+                    ["Show population grid", "显示人口网格"],
+                    ["Create density circuit", "创建核密度流程"],
+                  ].map(([en, zh]) => (
+                    <button
+                      key={en}
+                      disabled={busy}
+                      onClick={() => setPrompt(t(en, zh))}
+                    >
+                      {t(en, zh)}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  aria-label="Chat command"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={t(
+                    "Enter a command or choose a preset…",
+                    "输入指令或选择预设…",
+                  )}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendChat();
+                    }
+                  }}
+                />
+                <button
+                  className="primary v2-wide"
+                  disabled={busy || !prompt.trim()}
+                  onClick={sendChat}
+                >
+                  {t("Send", "发送")} ↗
+                </button>
+                <button
+                  className="v2-wide"
+                  onClick={() => {
+                    setCircuit(true);
+                    setTable(false);
+                  }}
+                >
+                  {t("Open model builder", "打开模型建构器")}
+                </button>
+                <small>
+                  {t(
+                    "Local presets · computations run in Circuit · model connection pending.",
+                    "本地预设 · 分析计算在 Circuit 中运行 · 模型连接待接入。",
+                  )}
+                </small>
+              </div>
             )}
           </div>
         </aside>
@@ -1385,6 +1356,50 @@ function App() {
           {error}
         </div>
       )}
+      {plugin && (
+        <section
+          className="v2-plugin-window"
+          role="dialog"
+          aria-label="Weather plugin"
+        >
+          <header>
+            <div>
+              <span className="eyebrow">GEOCIM / PLUGINS</span>
+              <h2>{t("Weather · EPW", "气象 · EPW")}</h2>
+            </div>
+            <button aria-label="Close plugin" onClick={() => setPlugin(false)}>
+              ×
+            </button>
+          </header>
+          <label>
+            {t("Weather file", "气象文件")}
+            <select
+              value={weather?.id || ""}
+              onChange={(e) =>
+                setWeather(layers.find((l) => l.id === e.target.value) || null)
+              }
+            >
+              {layers
+                .filter((l) => l.kind === "epw")
+                .map((l) => (
+                  <option value={l.id} key={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <Climate weather={weather} t={t} />
+          <button
+            className="v2-wide"
+            onClick={() => {
+              setPlugin(false);
+              setTab("upload");
+            }}
+          >
+            {t("Add EPW file in Upload", "在上传页添加 EPW 文件")}
+          </button>
+        </section>
+      )}
       {circuit && (
         <Suspense fallback={<div className="v2-notice">Loading Circuit…</div>}>
           <Circuit
@@ -1394,7 +1409,9 @@ function App() {
             layers={layers}
             onRun={runCircuit}
             busy={busy}
+            preferredLayer={selectedLayer}
             status={nodeStatus}
+            result={result}
             close={() => setCircuit(false)}
             t={t}
           />
@@ -1404,3 +1421,5 @@ function App() {
   );
 }
 createRoot(document.getElementById("root")).render(<App />);
+
+import "./revision.css";

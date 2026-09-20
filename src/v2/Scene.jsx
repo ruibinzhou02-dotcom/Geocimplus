@@ -11,6 +11,7 @@ import {
   vectorSurfaces,
 } from "./model.mjs";
 import { colorAt } from "./terrain-mesh.mjs";
+import { classifyLayer, colorCSS } from "./layers.mjs";
 import { stats } from "./raster-grid.mjs";
 export default function Scene({
   model,
@@ -51,8 +52,8 @@ export default function Scene({
     };
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI * 0.49;
-    scene.add(new THREE.AmbientLight(0xffffff, 2.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 2);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.7));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(-1000, -2000, 5000);
     scene.add(sun);
     const group = new THREE.Group();
@@ -159,6 +160,7 @@ export default function Scene({
     const first = s.model !== model;
     s.model = model;
     const { grid, terrain, lst, buildings } = model;
+    const selectedSet = new Set(selection?.ids || []);
     const geometry = (m) => {
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.BufferAttribute(m.positions, 3));
@@ -169,33 +171,55 @@ export default function Scene({
       g.computeVertexNormals();
       return g;
     };
-    if (style.terrain) {
+    const elevationLayer = layers.find((l) => l.id === grid.source),
+      analysisLayer = layers.find((l) => l.id === lst?.source),
+      imageLayer = layers.find((l) => l.role === "imagery");
+    if (style.terrain && elevationLayer?.visible !== false) {
       const g = geometry(terrain),
         st = stats(grid.mean),
+        terrainColours =
+          elevationLayer?.symbology && classifyLayer(elevationLayer),
         colors = new Float32Array(terrain.positions.length);
       for (let i = 0; i < terrain.z.length; i++)
-        colors.set(colorAt(terrain.z[i], st.min, st.max, "terrain"), i * 3);
+        colors.set(
+          elevationLayer?.symbology
+            ? terrainColours.color(terrain.z[i])
+            : colorAt(terrain.z[i], st.min, st.max, "terrain"),
+          i * 3,
+        );
       g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
       const m = new THREE.Mesh(
         g,
         new THREE.MeshStandardMaterial({
           vertexColors: true,
           roughness: 0.92,
+          opacity: elevationLayer?.symbology?.opacity ?? 1,
+          transparent: (elevationLayer?.symbology?.opacity ?? 1) < 1,
           side: THREE.DoubleSide,
         }),
       );
       m.userData.pickGrid = true;
       group.add(m);
     }
-    if (style.lst && lst) {
+    if (style.lst && lst && analysisLayer?.visible !== false) {
       const m = new THREE.Mesh(
         geometry(
-          thematicModel(lst, grid, terrain, style.ramp, style.min, style.max),
+          thematicModel(
+            lst,
+            grid,
+            terrain,
+            style.ramp,
+            style.min,
+            style.max,
+            analysisLayer?.symbology
+              ? classifyLayer(analysisLayer).color
+              : undefined,
+          ),
         ),
         new THREE.MeshBasicMaterial({
           vertexColors: true,
           transparent: true,
-          opacity: style.opacity,
+          opacity: style.opacity * (analysisLayer?.symbology?.opacity ?? 1),
           polygonOffset: true,
           polygonOffsetFactor: -3,
           polygonOffsetUnits: -3,
@@ -206,7 +230,7 @@ export default function Scene({
       m.userData.pickGrid = true;
       group.add(m);
     }
-    if (style.imagery && model.texture) {
+    if (style.imagery && model.texture && imageLayer?.visible !== false) {
       const tex = new THREE.DataTexture(
         model.texture.pixels,
         model.texture.width,
@@ -221,7 +245,7 @@ export default function Scene({
         new THREE.MeshBasicMaterial({
           map: tex,
           transparent: true,
-          opacity: style.imageryOpacity,
+          opacity: style.imageryOpacity * (imageLayer?.symbology?.opacity ?? 1),
           side: THREE.DoubleSide,
           polygonOffset: true,
           polygonOffsetFactor: -2,
@@ -256,9 +280,7 @@ export default function Scene({
     }
     if (selection?.ids?.length && style.buildings) {
       const selected = buildings.models.filter(
-        (m) =>
-          m.layerId === selection.layer &&
-          selection.ids.includes(m.featureIndex),
+        (m) => m.layerId === selection.layer && selectedSet.has(m.featureIndex),
       );
       if (selected.length)
         group.add(
@@ -276,22 +298,42 @@ export default function Scene({
         );
     }
     if (style.buildings) {
-      const b = buildings.models.filter(
-          (m) => layers.find((l) => l.id === m.layerId)?.visible !== false,
-        ),
-        g = geometry(mergeModels(b));
-      group.add(
-        new THREE.Mesh(
-          g,
-          new THREE.MeshStandardMaterial({
-            color: style.buildingColor,
-            roughness: 0.8,
-            side: THREE.DoubleSide,
-            transparent: style.buildingOpacity < 1,
-            opacity: style.buildingOpacity,
-          }),
-        ),
-      );
+      for (const l of layers.filter(
+        (l) => l.heightField && l.visible !== false,
+      )) {
+        const models = buildings.models.filter((m) => m.layerId === l.id),
+          classified = classifyLayer(l),
+          opacity = style.buildingOpacity * (l.symbology?.opacity ?? 1);
+        // Opaque buildings batch efficiently; transparent objects sort separately.
+        const batches = opacity < 1 ? models.map((m) => [m]) : [models];
+        for (const batch of batches) {
+          if (!batch.length) continue;
+          const merged = mergeModels(batch),
+            colors = new Float32Array(merged.positions.length);
+          let offset = 0;
+          for (const m of batch) {
+            const c = classified.color(m.properties?.[l.symbology?.field]);
+            for (let i = 0; i < m.positions.length / 3; i++)
+              colors.set(c, offset + i * 3);
+            offset += m.positions.length;
+          }
+          merged.colors = colors;
+          group.add(
+            new THREE.Mesh(
+              geometry(merged),
+              new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                flatShading: true,
+                roughness: 0.85,
+                side: THREE.FrontSide,
+                transparent: opacity < 1,
+                opacity,
+                depthWrite: opacity === 1,
+              }),
+            ),
+          );
+        }
+      }
     }
     if (style.wire) {
       const p = [];
@@ -319,6 +361,7 @@ export default function Scene({
       layers.filter((l) => l.visible !== false),
       grid,
       terrain,
+      selection,
     )) {
       const points = [];
       for (let i = 1; i < line.points.length; i++)
@@ -328,56 +371,76 @@ export default function Scene({
       group.add(
         new THREE.LineSegments(
           g,
-          new THREE.LineBasicMaterial({ color: "#7855a8" }),
-        ),
-      );
-    }
-    const surfaces = vectorSurfaces(
-      layers.filter((l) => l.visible !== false),
-      grid,
-      terrain,
-    );
-    if (surfaces.models.length) {
-      const merged = mergeModels(surfaces.models),
-        colors = new Float32Array(merged.positions.length);
-      let offset = 0;
-      for (const m of surfaces.models) {
-        colors.set(m.colors, offset);
-        offset += m.colors.length;
-      }
-      merged.colors = colors;
-      group.add(
-        new THREE.Mesh(
-          geometry(merged),
-          new THREE.MeshBasicMaterial({
-            vertexColors: true,
+          new THREE.LineBasicMaterial({
+            color: line.color
+              ? colorCSS(line.color)
+              : layers.find((l) => l.id === line.layerId)?.symbology
+                  ?.outlineColor || "#7855a8",
             transparent: true,
-            opacity: 0.55,
-            side: THREE.DoubleSide,
-            polygonOffset: true,
-            polygonOffsetFactor: -4,
-            polygonOffsetUnits: -4,
-            depthWrite: false,
+            opacity:
+              layers.find((l) => l.id === line.layerId)?.symbology?.opacity ??
+              1,
           }),
         ),
       );
     }
-    if (surfaces.points.length) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(surfaces.points, 3),
+    for (const layer of layers.filter(
+      (l) => l.kind === "vector" && l.visible !== false,
+    )) {
+      const surfaces = vectorSurfaces(
+        [layer],
+        grid,
+        terrain,
+        selection?.layer === layer.id ? selection.ids : [],
       );
-      group.add(
-        new THREE.Points(
-          g,
-          new THREE.PointsMaterial({
-            color: "#7a4ea0",
-            size: 5,
-            sizeAttenuation: false,
-          }),
-        ),
-      );
+      if (surfaces.models.length) {
+        const merged = mergeModels(surfaces.models),
+          colors = new Float32Array(merged.positions.length);
+        let offset = 0;
+        for (const m of surfaces.models) {
+          colors.set(m.colors, offset);
+          offset += m.colors.length;
+        }
+        merged.colors = colors;
+        group.add(
+          new THREE.Mesh(
+            geometry(merged),
+            new THREE.MeshBasicMaterial({
+              vertexColors: true,
+              transparent: true,
+              opacity: layer.symbology?.opacity ?? 0.75,
+              side: THREE.DoubleSide,
+              polygonOffset: true,
+              polygonOffsetFactor: -4,
+              polygonOffsetUnits: -4,
+              depthWrite: false,
+            }),
+          ),
+        );
+      }
+      if (surfaces.points.length) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute(
+          "color",
+          new THREE.Float32BufferAttribute(surfaces.pointColors, 3),
+        );
+        g.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(surfaces.points, 3),
+        );
+        group.add(
+          new THREE.Points(
+            g,
+            new THREE.PointsMaterial({
+              vertexColors: true,
+              transparent: true,
+              opacity: layer.symbology?.opacity ?? 1,
+              size: 5,
+              sizeAttenuation: false,
+            }),
+          ),
+        );
+      }
     }
     group.scale.z = style.zScale;
     if (first) {

@@ -1,3 +1,4 @@
+import { resampleGrid } from "./resample.mjs";
 import { readRaster, makeGrid, aggregate } from "./raster-grid.mjs";
 import { parseEPW } from "./epw.mjs";
 import { flattenGround, clipGrid } from "./ground.mjs";
@@ -11,8 +12,11 @@ self.onmessage = async ({ data: { id, type, payload } }) => {
     else if (type === "grid") {
       const g =
         payload.grid || makeGrid(payload.raster, payload.size, payload.crs);
-      result = aggregate(payload.raster, g, (percent) =>
-        self.postMessage({ id, progress: percent }),
+      result = resampleGrid(
+        payload.raster,
+        g,
+        payload.method || "mean",
+        (percent) => self.postMessage({ id, progress: percent }),
       );
     } else if (type === "clip")
       result = clipGrid(payload.grid, payload.features);

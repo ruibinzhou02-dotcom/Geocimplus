@@ -39,15 +39,19 @@ export default function Attributes({
                 }
               : null,
           ).filter(Boolean)
-        : vector?.data.features.map((f, i) => ({
-            __index: i,
+        : vector?.data?.features?.map((f, i) => ({
             ...f.properties,
+            __index: i,
           })) || [],
     [g, vector, layer],
   );
   const fields = Object.keys(rows[0] || {}),
     display = filtered
-      ? rows.filter((r) => filtered.has(r.cell_id ?? r.__index))
+      ? rows.filter((r) =>
+          filtered.has(
+            ["grid", "lstgrid"].includes(layer) ? r.cell_id : r.__index,
+          ),
+        )
       : rows;
   useEffect(() => {
     setPage(0);
@@ -71,7 +75,9 @@ export default function Attributes({
             ? Number(v) > Number(value)
             : Number(v) < Number(value);
         })
-        .map((r) => r.cell_id ?? r.__index);
+        .map((r) =>
+          ["grid", "lstgrid"].includes(layer) ? r.cell_id : r.__index,
+        );
     setSelection(ids);
     onSelection?.(layer, ids);
   };
@@ -212,7 +218,9 @@ export default function Attributes({
           </thead>
           <tbody>
             {display.slice(page * 100, (page + 1) * 100).map((r) => {
-              const id = r.cell_id ?? r.__index;
+              const id = ["grid", "lstgrid"].includes(layer)
+                ? r.cell_id
+                : r.__index;
               return (
                 <tr
                   key={id}

@@ -12,6 +12,10 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   COMPONENTS,
+  PORT_TYPES,
+  analysisGraph,
+  defaultGraph,
+  migrateGraph,
   validateGraph,
   groupSelection,
   ungroup,
@@ -34,10 +38,11 @@ function Battery({ data, selected }) {
               type="target"
               position={Position.Left}
               id={k}
-              style={{ top: 70 + i * 23 }}
+              title={PORT_TYPES[v.replace("?", "")]}
+              style={{ top: 80 + i * 25 }}
             />
             {k}
-            <em>{v}</em>
+            <em title={PORT_TYPES[v.replace("?", "")]}>{v}</em>
           </div>
         ))}
       </div>
@@ -47,6 +52,9 @@ function Battery({ data, selected }) {
         id="out"
         style={{ top: 40 }}
       />
+      <span className="v2-out-type" title={PORT_TYPES[def.out]}>
+        {def.out} →
+      </span>
       <footer>
         {data.params?.layer ||
           data.params?.expression ||
@@ -64,6 +72,8 @@ export default function Circuit({
   onRun,
   busy,
   status,
+  result,
+  preferredLayer,
   close,
   t,
   onDockHeight,
@@ -179,7 +189,7 @@ export default function Circuit({
             try {
               if (f.size > 200000)
                 throw new Error("Circuit JSON exceeds 200 KB.");
-              const g = JSON.parse(await f.text());
+              const g = migrateGraph(JSON.parse(await f.text()));
               validateGraph(g);
               setGraph(g);
               setSelected(null);
@@ -225,6 +235,50 @@ export default function Circuit({
       </header>
       <div className="v2-circuit-body">
         <nav>
+          <label>
+            {t("Start a circuit", "新建流程")}
+            <select
+              aria-label="Circuit template"
+              value=""
+              disabled={busy}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                if (e.target.value === "empty")
+                  setGraph({ version: 2, nodes: [], edges: [] });
+                else if (e.target.value === "scene") setGraph(defaultGraph());
+                else {
+                  const layer =
+                    layers.find(
+                      (l) => l.id === preferredLayer && l.kind === "vector",
+                    ) || layers.find((l) => l.kind === "vector");
+                  if (!layer) {
+                    setMessage(
+                      t("Upload a vector layer first.", "请先上传矢量图层。"),
+                    );
+                    return;
+                  }
+                  setGraph(analysisGraph(layer, e.target.value));
+                }
+                setSelected(null);
+                setMessage("");
+              }}
+            >
+              <option value="">{t("Choose template…", "选择模板…")}</option>
+              {[
+                ["empty", "Empty circuit", "空白流程"],
+                ["scene", "Shatou scene", "沙头场景"],
+                ["measure", "Area / length", "面积 / 长度"],
+                ["statistics", "Field statistics", "字段统计"],
+                ["centroid", "Representative points", "代表点"],
+                ["buffer", "Buffer", "缓冲区"],
+                ["kde", "Point density", "点核密度"],
+              ].map(([id, en, zh]) => (
+                <option key={id} value={id}>
+                  {t(en, zh)}
+                </option>
+              ))}
+            </select>
+          </label>
           {[...new Set(Object.values(COMPONENTS).map((d) => d.group))].map(
             (group) => (
               <section key={group}>
@@ -232,7 +286,7 @@ export default function Circuit({
                 {Object.entries(COMPONENTS)
                   .filter(([, d]) => d.group === group)
                   .map(([key, d]) => (
-                    <button key={key} onClick={() => add(key)}>
+                    <button key={key} disabled={busy} onClick={() => add(key)}>
                       ＋ {d.label}
                     </button>
                   ))}
@@ -256,7 +310,8 @@ export default function Circuit({
           onConnect={connect}
           onNodeClick={(_, n) => setSelected(n.id)}
           fitView
-          minZoom={0.15}
+          fitViewOptions={{ minZoom: 0.55, maxZoom: 0.9, padding: 0.12 }}
+          minZoom={0.25}
           maxZoom={2}
           deleteKeyCode={["Backspace", "Delete"]}
         >
@@ -272,14 +327,21 @@ export default function Circuit({
           {!n && (
             <p>
               {t(
-                "Select a component. Connect matching typed ports.",
-                "选择电池，连接相同类型的端口。",
+                "Connect matching types. Drag the canvas to pan; scroll to zoom.",
+                "连接相容类型的端口；拖动画布平移，滚轮缩放。",
               )}
             </p>
           )}
           {n && (
             <>
-              {["raster", "vector", "weather"].includes(n.data.component) && (
+              {[
+                "raster",
+                "vector",
+                "weather",
+                "points",
+                "polygons",
+                "gridInput",
+              ].includes(n.data.component) && (
                 <label>
                   {t("Input layer", "输入图层")}
                   <select
@@ -291,9 +353,14 @@ export default function Circuit({
                       .filter(
                         (l) =>
                           l.kind ===
-                          (n.data.component === "weather"
-                            ? "epw"
-                            : n.data.component),
+                            (n.data.component === "weather"
+                              ? "epw"
+                              : ["points", "polygons", "gridInput"].includes(
+                                    n.data.component,
+                                  )
+                                ? "vector"
+                                : n.data.component) &&
+                          (n.data.component !== "gridInput" || l.gridData),
                       )
                       .map((l) => (
                         <option key={l.id} value={l.id}>
@@ -318,7 +385,8 @@ export default function Circuit({
                   <label>
                     CRS
                     <input
-                      value={params.crs || "EPSG:32650"}
+                      placeholder="Auto UTM"
+                      value={params.crs || ""}
                       onChange={(e) => update({ crs: e.target.value })}
                     />
                   </label>
@@ -328,6 +396,70 @@ export default function Circuit({
                       "连接 align 后沿用上游格网的范围、尺寸和坐标系。",
                     )}
                   </p>
+                </>
+              )}
+              {n.data.component === "grid" && (
+                <label>
+                  {t("Resampling", "重采样")}
+                  <select
+                    value={params.method || "mean"}
+                    onChange={(e) => update({ method: e.target.value })}
+                  >
+                    <option value="mean">
+                      {t("Area-weighted mean", "面积加权均值")}
+                    </option>
+                    <option value="bilinear">
+                      {t("Bilinear", "双线性插值")}
+                    </option>
+                    <option value="nearest">{t("Nearest", "最近邻")}</option>
+                  </select>
+                </label>
+              )}
+              {n.data.component === "statistics" && (
+                <label>
+                  {t("Attribute field", "属性字段")}
+                  <input
+                    value={params.field || ""}
+                    onChange={(e) => update({ field: e.target.value })}
+                  />
+                </label>
+              )}
+              {n.data.component === "buffer" && (
+                <label>
+                  {t("Distance · m", "距离 · 米")}
+                  <input
+                    type="number"
+                    min="1"
+                    max="5000"
+                    value={params.distance ?? 100}
+                    onChange={(e) => update({ distance: +e.target.value })}
+                  />
+                </label>
+              )}
+              {n.data.component === "kde" && (
+                <>
+                  {[
+                    ["bandwidth", "Bandwidth · m", "带宽 · 米", 200],
+                    ["cellSize", "Cell size · m", "网格大小 · 米", 50],
+                  ].map(([k, en, zh, d]) => (
+                    <label key={k}>
+                      {t(en, zh)}
+                      <input
+                        type="number"
+                        min="5"
+                        max="5000"
+                        value={params[k] ?? d}
+                        onChange={(e) => update({ [k]: +e.target.value })}
+                      />
+                    </label>
+                  ))}
+                  <label>
+                    {t("Weight field · optional", "权重字段 · 可选")}
+                    <input
+                      value={params.weightField || ""}
+                      onChange={(e) => update({ weightField: e.target.value })}
+                    />
+                  </label>
                 </>
               )}
               {n.data.component === "ground" && (
@@ -394,6 +526,39 @@ export default function Circuit({
                 {t("Remove component", "删除电池")}
               </button>
             </>
+          )}
+          {result && (
+            <details open>
+              <summary>{t("Last statistics result", "最近的统计结果")}</summary>
+              <pre>{JSON.stringify(result.values, null, 2)}</pre>
+              <button
+                onClick={() => jsonDownload(result, "circuit-statistics.json")}
+              >
+                {t("Export report", "导出统计")}
+              </button>
+            </details>
+          )}
+          {n && (
+            <details>
+              <summary>{t("Data contract", "数据类型约定")}</summary>
+              {Object.entries(COMPONENTS[n.data.component].inputs).map(
+                ([port, type]) => (
+                  <p key={port}>
+                    <b>
+                      {port} · {type}
+                    </b>
+                    <br />
+                    {PORT_TYPES[type.replace("?", "")]}{" "}
+                    {type.endsWith("?") ? "(optional)" : "(required)"}
+                  </p>
+                ),
+              )}
+              <p>
+                out · {COMPONENTS[n.data.component].out}
+                <br />
+                {PORT_TYPES[COMPONENTS[n.data.component].out]}
+              </p>
+            </details>
           )}
           {message && <p role="alert">{message}</p>}
           <p>{t("Food4CIM · future extension", "Food4CIM · 后续扩展")}</p>

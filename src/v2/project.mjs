@@ -86,7 +86,11 @@ export function unpackProject(bytes) {
     )
       throw new Error("Invalid vector in project.");
   }
-  for (const g of [p.scene?.grid, p.scene?.lst].filter(Boolean)) {
+  for (const g of [
+    p.scene?.grid,
+    p.scene?.lst,
+    ...p.layers.map((l) => l.gridData),
+  ].filter(Boolean)) {
     const n = g.cols * g.rows;
     if (
       !Number.isInteger(g.cols) ||

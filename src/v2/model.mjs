@@ -1,6 +1,7 @@
 import { ShapeUtils, Vector2 } from "three";
 import { transform } from "./geo.mjs";
 import { terrainMesh, heightAt, colorAt } from "./terrain-mesh.mjs";
+import { classifyLayer } from "./layers.mjs";
 import { stats } from "./raster-grid.mjs";
 export function buildingModels(layers, g, terrain) {
   const models = [],
@@ -29,6 +30,10 @@ export function buildingModels(layers, g, terrain) {
           }),
         );
         if (!rings[0]?.length) continue;
+        // Right-handed shells: exterior CCW, courtyard holes CW.
+        rings.forEach((ring, i) => {
+          if (ShapeUtils.isClockWise(ring) === (i === 0)) ring.reverse();
+        });
         const samples = rings[0]
           .map((v) => heightAt(g, terrain, v.x, v.y))
           .filter(Number.isFinite);
@@ -80,7 +85,15 @@ export function buildingModels(layers, g, terrain) {
     }
   return { models, skipped };
 }
-export function thematicModel(grid, terrainGrid, terrain, ramp, min, max) {
+export function thematicModel(
+  grid,
+  terrainGrid,
+  terrain,
+  ramp,
+  min,
+  max,
+  colour,
+) {
   const positions = [],
     indices = [],
     colors = [],
@@ -96,7 +109,7 @@ export function thematicModel(grid, terrainGrid, terrain, ramp, min, max) {
       const a = y * (grid.cols + 1) + x,
         ids = [a, a + 1, a + grid.cols + 2, a + grid.cols + 1],
         start = positions.length / 3,
-        c = colorAt(grid.mean[k], lo, hi, ramp);
+        c = colour ? colour(grid.mean[k]) : colorAt(grid.mean[k], lo, hi, ramp);
       for (const v of ids) {
         positions.push(
           terrain.positions[v * 3],
@@ -126,11 +139,16 @@ export function mergeModels(models) {
     indices: Uint32Array.from(indices),
   };
 }
-export function vectorLines(layers, g, terrain) {
+export function vectorLines(layers, g, terrain, selection) {
   const p = transform("EPSG:4326", g.crs),
-    lines = [];
-  for (const l of layers.filter((l) => l.kind === "vector" && !l.heightField))
-    for (const f of l.data.features) {
+    lines = [],
+    selectedSet = new Set(selection?.ids || []);
+  for (const l of layers.filter(
+    (l) =>
+      l.kind === "vector" && !l.heightField && l.symbology?.outline !== false,
+  )) {
+    const classification = classifyLayer(l);
+    for (const [featureIndex, f] of l.data.features.entries()) {
       const geom = f.geometry;
       let rings =
         geom.type === "Polygon"
@@ -149,16 +167,32 @@ export function vectorLines(layers, g, terrain) {
             y = q[1] - g.origin[1];
           return [x, y, (heightAt(g, terrain, x, y) ?? 0) + 0.5];
         });
-        lines.push({ layerId: l.id, name: l.name, points });
+        lines.push({
+          layerId: l.id,
+          name: l.name,
+          points,
+          color:
+            selection?.layer === l.id && selectedSet.has(featureIndex)
+              ? [1, 0.75, 0.15]
+              : /Line/.test(geom.type) ||
+                  (l.category === "boundary" &&
+                    l.symbology?.mode &&
+                    l.symbology.mode !== "single")
+                ? classification.color(f.properties?.[l.symbology?.field])
+                : null,
+        });
       }
     }
+  }
   return lines;
 }
 export { terrainMesh };
-export function vectorSurfaces(layers, g, terrain) {
+export function vectorSurfaces(layers, g, terrain, selectedIds = []) {
+  const selectedSet = new Set(selectedIds);
   const p = transform("EPSG:4326", g.crs),
     models = [],
-    points = [];
+    points = [],
+    pointColors = [];
   const project = (ll) => {
     const q = p(ll),
       x = q[0] - g.origin[0],
@@ -166,13 +200,28 @@ export function vectorSurfaces(layers, g, terrain) {
     return [x, y, (heightAt(g, terrain, x, y) ?? 0) + 0.3];
   };
   for (const l of layers.filter(
-    (l) => l.kind === "vector" && !l.heightField && l.id !== "boundary",
-  ))
-    for (const f of l.data.features) {
+    (l) =>
+      l.kind === "vector" &&
+      !l.heightField &&
+      l.id !== "boundary" &&
+      l.category !== "boundary",
+  )) {
+    const classification = classifyLayer(l);
+    for (const [featureIndex, f] of l.data.features.entries()) {
       const geom = f.geometry;
-      if (geom.type === "Point") points.push(...project(geom.coordinates));
+      const selected = selectedSet.has(featureIndex);
+      const colour = selected
+        ? [1, 0.75, 0.15]
+        : classification.color(f.properties?.[l.symbology?.field]);
+      if (geom.type === "Point") {
+        points.push(...project(geom.coordinates));
+        pointColors.push(...colour);
+      }
       if (geom.type === "MultiPoint")
-        for (const q of geom.coordinates) points.push(...project(q));
+        for (const q of geom.coordinates) {
+          points.push(...project(q));
+          pointColors.push(...colour);
+        }
       const polygons =
         geom.type === "Polygon"
           ? [geom.coordinates]
@@ -187,14 +236,17 @@ export function vectorSurfaces(layers, g, terrain) {
             rings[0].map((q) => new Vector2(q[0], q[1])),
             rings.slice(1).map((r) => r.map((q) => new Vector2(q[0], q[1]))),
           ),
-          color = l.density
-            ? colorAt(
-                Number(f.properties[l.density.field]),
-                0,
-                l.density.max,
-                "thermal",
-              )
-            : [0.56, 0.42, 0.69],
+          color =
+            selected || l.symbology
+              ? colour
+              : l.density
+                ? colorAt(
+                    Number(f.properties[l.density.field]),
+                    0,
+                    l.density.max,
+                    "thermal",
+                  )
+                : [0.56, 0.42, 0.69],
           colors = Float32Array.from(flat.flatMap(() => color));
         models.push({
           positions,
@@ -204,5 +256,6 @@ export function vectorSurfaces(layers, g, terrain) {
         });
       }
     }
-  return { models, points };
+  }
+  return { models, points, pointColors };
 }

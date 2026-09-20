@@ -1,0 +1,254 @@
+/* V2.1: dataset tree, scene conversion and plugin workspace. */
+.v2-layer-group {
+  border-bottom: 1px solid #eae4ef;
+  padding: 9px 0;
+}
+.v2-layer-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+  color: #66516f;
+}
+.v2-layer-group > summary:before {
+  content: "▾";
+  font-size: 9px;
+}
+.v2-layer-group:not([open]) > summary:before {
+  content: "▸";
+}
+.v2-layer-group summary small {
+  margin-left: auto;
+  color: #9f92aa;
+}
+.v2-tree-child {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin: 5px 0 3px 10px;
+  padding: 4px 2px;
+  border-radius: 5px;
+}
+.v2-tree-child.selected {
+  background: #eee6f4;
+}
+.v2-tree-child > button {
+  border: 0;
+  background: transparent;
+  padding: 3px;
+  font-size: 11px;
+  text-align: left;
+  min-width: 0;
+}
+.v2-tree-child > button:first-of-type {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #62576d;
+}
+.v2-tree-child input,
+.v2-layer-group input {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  accent-color: #8664a7;
+}
+.v2-tree-empty {
+  display: block;
+  margin: 8px 0 0 33px;
+  color: #b2a9ba;
+  font-size: 10px;
+}
+.v2-class-legend {
+  margin: 14px 0;
+  max-height: 200px;
+  overflow: auto;
+  font-size: 10px;
+}
+.v2-class-legend > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+.v2-class-legend i {
+  display: inline-block;
+  width: 22px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.v2-layer-style > h2 {
+  overflow-wrap: anywhere;
+  font-size: 16px;
+}
+.v2-layer-style details {
+  margin: 15px 0;
+}
+.v2-conversion {
+  background: #f5f1f8;
+  padding: 12px;
+  border: 1px solid #e9deef;
+  border-radius: 9px;
+  margin-bottom: 15px;
+}
+.v2-conversion > summary {
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.v2-conversion small {
+  display: block;
+  margin-top: 9px;
+  line-height: 1.6;
+}
+.v2-chat-welcome {
+  padding: 30px 0 20px;
+  color: #9e80b6;
+}
+.v2-chat-welcome > span {
+  font-size: 30px;
+}
+.v2-chat-welcome h3 {
+  margin-top: 22px;
+  font-size: 14px;
+}
+.v2-chat-panel .v2-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 12px 0 20px;
+}
+.v2-chat-panel .v2-prompts button {
+  width: 100%;
+  font-size: 11px;
+  padding: 10px 7px;
+  background: white;
+  border-color: #e7def0;
+  color: #8a6ba3;
+}
+.v2-chat-panel textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+.v2-chat-panel > .v2-wide {
+  margin: 6px 0 14px;
+}
+.v2-chat-panel small {
+  line-height: 1.6;
+  color: #a295ad;
+}
+.v2-plugin-window {
+  position: fixed;
+  right: 24px;
+  top: 78px;
+  z-index: 90;
+  width: 390px;
+  max-width: 90vw;
+  max-height: calc(100vh - 108px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #ded3e7;
+  border-radius: 15px;
+  box-shadow: 0 18px 60px #47315433;
+  padding: 22px;
+}
+.v2-plugin-window > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid #ece6f2;
+  margin-bottom: 15px;
+}
+.v2-plugin-window h2 {
+  font-size: 19px;
+}
+.v2-plugin-window p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.v2-plugin-window button {
+  cursor: pointer;
+}
+.v2-out-type {
+  position: absolute;
+  right: 12px;
+  top: 28px;
+  font-size: 9px;
+  color: #896aa0;
+  background: #f2ebf7;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.v2-battery > b {
+  padding-right: 0;
+  margin-top: 12px;
+}
+.v2-battery > small {
+  display: block;
+  margin-bottom: 12px;
+}
+.v2-circuit aside pre {
+  font-size: 10px;
+  overflow: auto;
+}
+.v2-circuit aside details {
+  font-size: 11px;
+  margin: 15px 0;
+}
+.v2-circuit .v2-circuit-body {
+  grid-template-columns: 175px 1fr 220px;
+}
+
+.v2-circuit.docked {
+  left: 0;
+  right: 0;
+}
+.v2-circuit-body nav {
+  width: 175px;
+}
+.v2-circuit-body > aside {
+  width: 215px;
+}
+.v2-circuit-body nav > label {
+  font-size: 10px;
+  margin: 0 0 12px;
+}
+.v2-circuit-body nav select {
+  font-size: 10px;
+  padding: 5px;
+  width: 100%;
+}
+.v2-circuit-body nav button {
+  font-size: 10px;
+  padding: 5px 0;
+}
+.v2-battery {
+  position: relative;
+}
+.v2-battery > small {
+  margin: 0;
+  height: 26px;
+}
+.v2-battery > b {
+  font-size: 13px;
+  margin: 0;
+  padding: 14px 11px 12px;
+}
+.v2-ports > div {
+  height: 25px;
+  font-size: 11px;
+}
+.v2-ports em {
+  font-size: 10px;
+}
+.v2-out-type {
+  top: 6px;
+  font-size: 10px;
+}
+.v2-battery.error {
+  outline: 2px solid #bc626d;
+}
