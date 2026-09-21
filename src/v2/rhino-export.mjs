@@ -1,4 +1,5 @@
 import { thematicModel, vectorLines } from "./model.mjs";
+import { roadModels, isRoadLayer, ROAD_DISPLAY } from "./road-mesh.mjs";
 import { zipSync, strToU8 } from "fflate";
 export async function encodeRhino(rhino, model, layers, style) {
   if (model.grid.unit !== "m")
@@ -27,6 +28,10 @@ export async function encodeRhino(rhino, model, layers, style) {
       acquisition: l.acquisition,
       crs: l.crs,
     })),
+    roadDisplay: {
+      ...ROAD_DISPLAY,
+      purpose: "cartographic relief; not measured road dimensions",
+    },
     flatImageryReferenceZ: model.flatTexture?.referenceZ ?? null,
     created: new Date().toISOString(),
   };
@@ -42,9 +47,7 @@ export async function encodeRhino(rhino, model, layers, style) {
     ["06_LST", "#db8565"],
     ["07_Analysis", "#9875bd"],
     ...(model.flatTexture ? [["08_FlatBaseMap", "#aaaaaa"]] : []),
-    ...(layers.some((l) => l.id === "roads")
-      ? [["09_RoadNetwork", "#d1a878"]]
-      : []),
+    ...(layers.some(isRoadLayer) ? [["09_RoadNetwork", "#d1a878"]] : []),
   ]) {
     const l = new rhino.Layer();
     l.name = name;
@@ -137,7 +140,19 @@ export async function encodeRhino(rhino, model, layers, style) {
       height_m: m.height,
       source_layer: m.layerId,
     });
-  for (const line of vectorLines(layers, model.grid, model.terrain)) {
+  for (const road of roadModels(layers, model.grid, model.terrain))
+    mesh(road, "09_RoadNetwork", road.name, {
+      source_layer: road.layerId,
+      source_feature: road.featureIndex,
+      display_width_m: ROAD_DISPLAY.width,
+      display_thickness_m: ROAD_DISPLAY.thickness,
+      display_clearance_m: ROAD_DISPLAY.clearance,
+    });
+  for (const line of vectorLines(
+    layers.filter((l) => !isRoadLayer(l)),
+    model.grid,
+    model.terrain,
+  )) {
     if (line.points.length < 2) continue;
     const a = attrs(
       line.layerId === "boundary"

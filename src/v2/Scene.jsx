@@ -10,6 +10,7 @@ import {
   vectorLines,
   vectorSurfaces,
 } from "./model.mjs";
+import { roadModels, isRoadLayer } from "./road-mesh.mjs";
 import { colorAt } from "./terrain-mesh.mjs";
 import { classifyLayer, colorCSS } from "./layers.mjs";
 import { stats } from "./raster-grid.mjs";
@@ -385,8 +386,28 @@ export default function Scene({
       });
       group.add(new LineSegments2(geom, mat));
     }
+    for (const road of roadModels(layers, grid, terrain, selection)) {
+      const opacity =
+        layers.find((l) => l.id === road.layerId)?.symbology?.opacity ?? 1;
+      group.add(
+        new THREE.Mesh(
+          geometry(road),
+          new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            roughness: 0.95,
+            flatShading: true,
+            transparent: opacity < 1,
+            opacity,
+            depthWrite: opacity === 1,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+          }),
+        ),
+      );
+    }
     for (const line of vectorLines(
-      layers.filter((l) => l.visible !== false),
+      layers.filter((l) => l.visible !== false && !isRoadLayer(l)),
       grid,
       terrain,
       selection,
