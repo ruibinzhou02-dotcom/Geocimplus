@@ -1,6 +1,8 @@
 import { thematicModel, vectorLines } from "./model.mjs";
 import { roadModels, isRoadLayer, ROAD_DISPLAY } from "./road-mesh.mjs";
 import { zipSync, strToU8 } from "fflate";
+import { terrainSolid } from "./terrain-solid.mjs";
+import { displayTexture } from "./texture.mjs";
 export async function encodeRhino(rhino, model, layers, style) {
   if (model.grid.unit !== "m")
     throw new Error(
@@ -119,7 +121,29 @@ export async function encodeRhino(rhino, model, layers, style) {
     rm.delete();
     a.delete();
   };
-  mesh(model.terrain, "03_TerrainMesh", "Continuous terrain");
+  const solid =
+    style.solidBase !== false
+      ? terrainSolid(model.terrain, model.flatTexture?.referenceZ)
+      : null;
+  meta.terrainBase = solid
+    ? {
+        z: solid.baseZ,
+        purpose: "display closure, not measured subsurface",
+        noData: "top holes retained",
+      }
+    : null;
+  file.strings().set("GeoCIM:georeference", JSON.stringify(meta));
+  mesh(
+    solid || model.terrain,
+    "03_TerrainMesh",
+    solid ? "Closed terrain to reference plane" : "Continuous terrain",
+    solid
+      ? {
+          base_z: solid.baseZ,
+          base_purpose: "display closure; not measured subsurface",
+        }
+      : {},
+  );
   if (model.lst)
     mesh(
       thematicModel(
@@ -197,7 +221,10 @@ export async function encodeRhino(rhino, model, layers, style) {
     "Grid edges · 0.2 m ribbons",
   );
   if (model.texture) {
-    const { width, height, pixels } = model.texture,
+    const { width, height, pixels } = displayTexture(
+        model.texture,
+        layers.find((l) => l.role === "imagery"),
+      ),
       colors = new Float32Array(t.positions.length);
     for (let i = 0; i < t.uv.length / 2; i++) {
       const x = Math.min(width - 1, Math.floor(t.uv[i * 2] * width)),
@@ -222,7 +249,13 @@ export async function encodeRhino(rhino, model, layers, style) {
     const {
         mesh: m,
         texture: { width, height, pixels },
-      } = model.flatTexture,
+      } = {
+        ...model.flatTexture,
+        texture: displayTexture(
+          model.flatTexture.texture,
+          layers.find((l) => l.role === "flatImagery"),
+        ),
+      },
       colors = new Float32Array(m.positions.length);
     for (let i = 0; i < m.uv.length / 2; i++) {
       const x = Math.min(width - 1, Math.floor(m.uv[i * 2] * width)),
@@ -263,8 +296,20 @@ export async function exportRhino(model, layers, style) {
       "georeference.json": strToU8(JSON.stringify(result.meta, null, 2)),
     };
   for (const [name, texture] of [
-    ["texture.png", model.texture],
-    ["satellite-flat.png", model.flatTexture?.texture],
+    [
+      "texture.png",
+      displayTexture(
+        model.texture,
+        layers.find((l) => l.role === "imagery"),
+      ),
+    ],
+    [
+      "satellite-flat.png",
+      displayTexture(
+        model.flatTexture?.texture,
+        layers.find((l) => l.role === "flatImagery"),
+      ),
+    ],
   ]) {
     if (!texture) continue;
     const { width, height, pixels } = texture,

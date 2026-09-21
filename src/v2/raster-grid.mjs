@@ -65,7 +65,7 @@ export async function readRaster(buffer, meta = {}) {
     bandMetadata,
     scale,
     offset,
-    role: rgb ? "imagery" : meta.role || "dem",
+    role: meta.role || (rgb ? "imagery" : "dem"),
     unit:
       meta.unit ||
       metadata.value_unit ||

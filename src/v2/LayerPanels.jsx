@@ -121,7 +121,38 @@ export function LayerTree({
     </>
   );
 }
-export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
+export function LayerStyle({
+  layer: l,
+  layers = [],
+  onSelect,
+  onChange,
+  onTable,
+  onRemove,
+  t,
+}) {
+  const picker = (
+    <label className="v2-symbol-layer">
+      {t("Layer", "图层")}
+      <select
+        aria-label="Symbology layer"
+        value={l?.id || ""}
+        onChange={(e) => onSelect(e.target.value)}
+      >
+        {!l && <option value="">{t("Select a layer", "选择图层")}</option>}
+        {ROOT_LAYERS.map(([id, en, zh]) => (
+          <optgroup key={id} label={t(en, zh)}>
+            {layers
+              .filter((x) => x.kind !== "epw" && bucketOf(x) === id)
+              .map((x) => (
+                <option key={x.id} value={x.id}>
+                  {t(x.name, x.nameZh || x.name)}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
   if (!l)
     return (
       <p>
@@ -134,6 +165,7 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
   if (l.kind === "summary")
     return (
       <div className="v2-layer-style">
+        {picker}
         <h2>{t(l.name, l.nameZh || l.name)}</h2>
         <span className="v2-chip">{t("Result report", "结果报告")}</span>
         <dl className="v2-stat-report">
@@ -163,6 +195,7 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
     classified = classifyLayer(l);
   return (
     <div className="v2-layer-style">
+      {picker}
       <h2>{t(l.name, l.nameZh || l.name)}</h2>
       <span className="v2-chip">
         {t(...ROOT_LAYERS.find(([id]) => id === bucketOf(l)).slice(1, 3))} ·{" "}
@@ -177,70 +210,111 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
           : `${l.data.features.length.toLocaleString()} ${t("features", "个要素")}`}
       </small>
       <h3>{t("Symbology", "图层样式")}</h3>
-      <label>
-        {t("Colour by", "着色方式")}
-        <select
-          aria-label="Colour by"
-          value={s.mode || "single"}
-          onChange={(e) =>
-            set({ mode: e.target.value, field: s.field || fields[0] })
-          }
-        >
-          <option value="single">{t("Single colour", "单一颜色")}</option>
-          <option value="equal">{t("Equal intervals", "等间隔分级")}</option>
-          <option value="quantile">{t("Quantiles", "分位数分级")}</option>
-          <option value="categorical">
-            {t("Unique values", "唯一值分类")}
-          </option>
-        </select>
-      </label>
-      {s.mode && s.mode !== "single" ? (
+      {["imagery", "flatImagery"].includes(l.role) ? (
         <>
           <label>
-            {t("Attribute field", "属性字段")}
+            {t("Image display", "影像显示")}
             <select
-              aria-label="Colour field"
-              value={s.field || fields[0] || ""}
-              onChange={(e) => set({ field: e.target.value })}
+              aria-label="Image display"
+              value={s.imageryMode || (l.rgb ? "rgb" : "grayscale")}
+              onChange={(e) => set({ imageryMode: e.target.value })}
             >
-              {fields.map((f) => (
-                <option key={f}>{f}</option>
-              ))}
+              <option value="rgb" disabled={!l.rgb}>
+                {t("Colour composite", "彩色合成")}
+              </option>
+              <option value="grayscale">
+                {t("First-band grayscale", "第一通道灰度")}
+              </option>
             </select>
           </label>
+          {l.rgbStatus === "provisional" && (
+            <small>
+              {t(
+                "R=C1, G=C2, B=C3 · channel identities unverified",
+                "R=C1、G=C2、B=C3 · 原始通道含义待核实",
+              )}
+            </small>
+          )}
+        </>
+      ) : (
+        <>
           <label>
-            {t("Colour ramp", "色带")}
+            {t("Colour by", "着色方式")}
             <select
-              value={s.ramp || "purple"}
-              onChange={(e) => set({ ramp: e.target.value })}
+              aria-label="Colour by"
+              value={s.mode || "single"}
+              onChange={(e) =>
+                set({ mode: e.target.value, field: s.field || fields[0] })
+              }
             >
-              {Object.keys(RAMPS).map((r) => (
-                <option key={r}>{r}</option>
-              ))}
+              <option value="single">{t("Single colour", "单一颜色")}</option>
+              <option value="equal">
+                {t("Equal intervals", "等间隔分级")}
+              </option>
+              <option value="quantile">{t("Quantiles", "分位数分级")}</option>
+              <option value="categorical">
+                {t("Unique values", "唯一值分类")}
+              </option>
             </select>
           </label>
-          {s.mode !== "categorical" && (
+          {s.mode && s.mode !== "single" ? (
+            <>
+              <label>
+                {t("Attribute field", "属性字段")}
+                <select
+                  aria-label="Colour field"
+                  value={s.field || fields[0] || ""}
+                  onChange={(e) => set({ field: e.target.value })}
+                >
+                  {fields.map((f) => (
+                    <option key={f}>{f}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("Colour ramp", "色带")}
+                <select
+                  value={s.ramp || "purple"}
+                  onChange={(e) => set({ ramp: e.target.value })}
+                >
+                  {Object.keys(RAMPS).map((r) => (
+                    <option key={r}>{r}</option>
+                  ))}
+                </select>
+              </label>
+              <div
+                className="v2-ramp-preview"
+                aria-label="Colour ramp preview"
+                style={{
+                  height: 10,
+                  borderRadius: 4,
+                  background: `linear-gradient(90deg,${(RAMPS[s.ramp || "purple"] || RAMPS.purple).join(",")})`,
+                }}
+              />
+              {s.mode !== "categorical" && (
+                <label>
+                  {t("Classes", "分级数")}
+                  <input
+                    type="number"
+                    min="2"
+                    max="9"
+                    value={s.classes || 5}
+                    onChange={(e) => set({ classes: +e.target.value })}
+                  />
+                </label>
+              )}
+            </>
+          ) : (
             <label>
-              {t("Classes", "分级数")}
+              {t("Colour", "颜色")}
               <input
-                type="number"
-                min="2"
-                max="9"
-                value={s.classes || 5}
-                onChange={(e) => set({ classes: +e.target.value })}
+                type="color"
+                value={s.color || (l.heightField ? "#d6cedf" : "#9474b1")}
+                onChange={(e) => set({ color: e.target.value })}
               />
             </label>
           )}
         </>
-      ) : (
-        <label>
-          {t("Colour", "颜色")}
-          <input
-            type="color"
-            value={s.color || (l.heightField ? "#d6cedf" : "#9474b1")}
-            onChange={(e) => set({ color: e.target.value })}
-          />
-        </label>
       )}
       <label>
         {t("Opacity", "不透明度")} · {Math.round((s.opacity ?? 1) * 100)}%
@@ -276,14 +350,16 @@ export function LayerStyle({ layer: l, onChange, onTable, onRemove, t }) {
           )}
         </>
       )}
-      <div className="v2-class-legend">
-        {classified.legend.map((v, i) => (
-          <div key={i}>
-            <i style={{ background: colorCSS(v.color) }} />
-            <span>{v.label}</span>
-          </div>
-        ))}
-      </div>
+      {!["imagery", "flatImagery"].includes(l.role) && (
+        <div className="v2-class-legend">
+          {classified.legend.map((v, i) => (
+            <div key={i}>
+              <i style={{ background: colorCSS(v.color) }} />
+              <span>{v.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {l.kind === "vector" && (
         <button onClick={() => onTable(l.id)}>
           {t("Open attribute table", "打开属性表")}

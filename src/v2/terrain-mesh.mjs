@@ -1,4 +1,6 @@
+import { SCIENTIFIC_RAMPS } from "./scientific-palettes.mjs";
 export const RAMPS = {
+  ...SCIENTIFIC_RAMPS,
   thermal: ["#323788", "#348cb6", "#83cbb7", "#f5eaa0", "#ed974f", "#b92f55"],
   terrain: ["#42565b", "#8faaa0", "#cbcfab", "#e6dac0", "#f8f4e7"],
   purple: ["#ede8f6", "#c3b8e0", "#9277bc", "#63418e", "#351f5d"],

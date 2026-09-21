@@ -1,5 +1,7 @@
 # GeoCIM · 沙头分析 / Shatou analysis
 
+**另一 ChatGPT 会话接手或讨论时，先读 [V1/V2 对比与阅读指南](docs/V1与V2对比及ChatGPT阅读指南.md)。当前 V2 显示维护更新见 [V2.3 说明](docs/V2.3显示维护与资源库.md)：实体底座、彩色合成、符号系统选层和科学色带。V1 尚未退役，GitHub 源码和历史保留。**
+
 V2.2 主入口：https://geocimplus.com/ ，兼容入口：https://geocimplus.com/v2.html ，旧版：https://geocimplus.com/v1.html 。固定沙头示例在服务器分析，新建项目及用户数据在浏览器本地分析；展示、分析、结果三类图层已经接入。使用、目录授权、部署和回滚见 [V2.2 使用与交付](docs/V2.2使用与交付.md)。源码分支为 `codex/v2`。发布包将 `dist/v2.html` 同时发布为首页和 `/v2.html`；V1 保留在 `/v1.html`。本地源码的 `index.html` 仍是 V1 开发入口，本地 V2 请访问 `/v2.html`。
 
 本轮新增 GIS 数据目录识别、路网、平面卫星底图、中英文流程与可连接数字滑条，见 [数据导入与数字电池](docs/V2.2数据导入与数字电池.md)。

@@ -12,6 +12,8 @@ import {
 } from "./model.mjs";
 import { roadModels, isRoadLayer } from "./road-mesh.mjs";
 import { colorAt } from "./terrain-mesh.mjs";
+import { terrainSolid } from "./terrain-solid.mjs";
+import { displayTexture } from "./texture.mjs";
 import { classifyLayer, colorCSS } from "./layers.mjs";
 import { stats } from "./raster-grid.mjs";
 export default function Scene({
@@ -183,7 +185,7 @@ export default function Scene({
     ) {
       const f = model.flatTexture,
         tex = new THREE.DataTexture(
-          f.texture.pixels,
+          displayTexture(f.texture, flatLayer).pixels,
           f.texture.width,
           f.texture.height,
         );
@@ -199,6 +201,26 @@ export default function Scene({
             opacity: flatLayer?.symbology?.opacity ?? 1,
             side: THREE.DoubleSide,
             depthWrite: true,
+          }),
+        ),
+      );
+    }
+    if (
+      style.solidBase !== false &&
+      ((style.terrain && elevationLayer?.visible !== false) ||
+        (style.imagery && model.texture && imageLayer?.visible !== false))
+    ) {
+      const solid = terrainSolid(terrain, model.flatTexture?.referenceZ);
+      group.add(
+        new THREE.Mesh(
+          geometry({ ...solid, indices: solid.closureIndices }),
+          new THREE.MeshStandardMaterial({
+            color: "#b8b0a3",
+            roughness: 1,
+            flatShading: true,
+            side: THREE.DoubleSide,
+            opacity: elevationLayer?.symbology?.opacity ?? 1,
+            transparent: (elevationLayer?.symbology?.opacity ?? 1) < 1,
           }),
         ),
       );
@@ -261,7 +283,7 @@ export default function Scene({
     }
     if (style.imagery && model.texture && imageLayer?.visible !== false) {
       const tex = new THREE.DataTexture(
-        model.texture.pixels,
+        displayTexture(model.texture, imageLayer).pixels,
         model.texture.width,
         model.texture.height,
       );

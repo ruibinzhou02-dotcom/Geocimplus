@@ -63,6 +63,7 @@ import "./style.css";
 const Circuit = lazy(() => import("./Circuit.jsx"));
 const initialStyle = {
   terrain: true,
+  solidBase: true,
   lst: true,
   wire: false,
   wireColor: "#645078",
@@ -386,7 +387,7 @@ function App() {
       setNotice(
         t("Reading the fixed Shatou example…", "正在读取固定沙头示例…"),
       );
-      const r = await fetch("/v2-data/catalog.json");
+      const r = await fetch("/v2-data/catalog.json", { cache: "no-cache" });
       if (!r.ok)
         throw new Error(
           t(
@@ -397,7 +398,7 @@ function App() {
       const catalog = await r.json(),
         ls = [];
       for (const source of catalog.sources) {
-        const f = await fetch("/v2-data/" + source.url);
+        const f = await fetch("/v2-data/" + source.url, { cache: "no-cache" });
         if (!f.ok) throw new Error(source.url + " unavailable");
         const meta = normalizeLayer({ ...source, visible: true });
         if (source.kind === "raster")
@@ -1511,6 +1512,7 @@ function App() {
                 <h3>{t("Display layers", "显示图层")}</h3>
                 {[
                   ["terrain", "Terrain surface", "地形曲面"],
+                  ["solidBase", "Solid terrain base", "地形实体底座"],
                   ["lst", "Analysis colours", "分析色带"],
                   ["buildings", "Buildings", "建筑"],
                   ["imagery", "Draped satellite", "地形卫星贴图"],
@@ -1618,6 +1620,8 @@ function App() {
             {tab === "layers" && (
               <LayerStyle
                 layer={activeLayer}
+                layers={layers}
+                onSelect={setSelectedLayer}
                 t={t}
                 onTable={tableOpen}
                 onChange={changeLayer}

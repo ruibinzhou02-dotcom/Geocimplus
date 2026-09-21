@@ -1,3 +1,4 @@
+import { RAMPS } from "./terrain-mesh.mjs";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
@@ -670,9 +671,9 @@ export default function Circuit({
                     value={params.ramp || "thermal"}
                     onChange={(e) => update({ ramp: e.target.value })}
                   >
-                    <option>thermal</option>
-                    <option>purple</option>
-                    <option>terrain</option>
+                    {Object.keys(RAMPS).map((r) => (
+                      <option key={r}>{r}</option>
+                    ))}
                   </select>
                 </label>
               )}

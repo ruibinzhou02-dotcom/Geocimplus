@@ -89,6 +89,8 @@ def main():
     (OUT / 'catalog.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     from prepare_v2_roads import prepare_roads
     prepare_roads()
+    from prepare_v2_satellite import main as prepare_satellite
+    prepare_satellite()
     assert before == hashes(), 'Source contents changed during preparation'
     audit['source_files_unchanged'] = True
     (REPORT / 'data-audit.json').write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding='utf-8')

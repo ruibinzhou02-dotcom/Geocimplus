@@ -1,4 +1,11 @@
 import { transform } from "./geo.mjs";
+export function displayTexture(texture, layer) {
+  if (!texture || layer?.symbology?.imageryMode !== "grayscale") return texture;
+  const pixels = texture.pixels.slice();
+  for (let i = 0; i < pixels.length; i += 4)
+    pixels[i + 1] = pixels[i + 2] = pixels[i];
+  return { ...texture, pixels };
+}
 export function drapeTexture(r, g) {
   const w = 1024,
     h = Math.max(1, Math.round((w * g.rows) / g.cols)),
