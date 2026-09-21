@@ -93,6 +93,8 @@ block='''
         proxy_send_timeout 15s;
         proxy_buffering off;
     }
+    location = / { try_files /index.html =404; add_header Cache-Control "no-cache"; }
+    location = /v1.html { add_header Cache-Control "no-cache"; }
     location = /v2.html { add_header Cache-Control "no-cache"; }
     location ^~ /v2-data/ { try_files $uri =404; add_header Cache-Control "public, max-age=300"; }
     # GEOCIM V22 END

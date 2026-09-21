@@ -5,7 +5,11 @@ archive=r/'releases'/f'{release}.tar.gz'
 allowed=['catalog.json','dem.tif','lst.tif','basemap.tif','buildings.geojson','boundary.geojson','roads.geojson','weather.epw']
 with tarfile.open(archive,'w:gz') as t:
  for name in ['cloud-server.mjs','cloud-worker.mjs']: t.add(r/'releases/cloud-v2'/name,arcname=name)
+ # Publish V2 at both the main domain and the existing V2 URL.
+ t.add(r/'dist/v2.html',arcname='web/index.html')
  t.add(r/'dist/v2.html',arcname='web/v2.html')
+ # The source index remains the V1 development entry; preserve its public URL.
+ t.add(r/'dist/index.html',arcname='web/v1.html')
  t.add(r/'dist/assets',arcname='web/assets')
  # Only the curated derived example files are published, never source folders or backups.
  for name in allowed:
